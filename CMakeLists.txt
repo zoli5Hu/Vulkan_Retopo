@@ -24,8 +24,11 @@ if(NOT glfw3_FOUND)
     FetchContent_MakeAvailable(glfw)
 endif()
 
-# 3. A programod
-add_executable(Pro main.cpp)
+# 3. A programod (Itt mondjuk meg, hogy a main.cpp mellett az src/RetopoApp.cpp is a projekt része)
+add_executable(Pro
+        main.cpp
+        src/RetopoApp.cpp
+)
 
 # 4. Hozzácsatolás
 target_include_directories(Pro PRIVATE ${Vulkan_INCLUDE_DIRS})
