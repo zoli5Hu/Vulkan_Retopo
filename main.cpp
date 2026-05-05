@@ -73,19 +73,21 @@ private:
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
 
-        // 1. GLFW kiterjesztések bekérése
+        // --- 1. KITERJESZTÉSEK BEÁLLÍTÁSA (Multiplatform módra) ---
         uint32_t glfwExtensionCount = 0;
         const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-        // 2. MAC SPECIFIKUS BEÁLLÍTÁS (MoltenVK miatt kötelező)
-        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-        createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        // MAC SPECIFIKUS: Csak akkor adjuk hozzá a MoltenVK kiterjesztést, ha Apple gépen fordul a kód
+        #ifdef __APPLE__
+            extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        #endif
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
         createInfo.ppEnabledExtensionNames = extensions.data();
 
-        // 3. Validation layerek hozzáadása a létrehozáshoz
+        // --- 2. VALIDATION LAYEREK BEÁLLÍTÁSA ---
         if (enableValidationLayers) {
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -93,7 +95,7 @@ private:
             createInfo.enabledLayerCount = 0;
         }
 
-        // 4. Vulkan Instance létrehozása
+        // --- 3. VULKAN INSTANCE LÉTREHOZÁSA ---
         if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
             throw std::runtime_error("Hiba: Nem sikerult letrehozni a Vulkan Instance-t!");
         }
