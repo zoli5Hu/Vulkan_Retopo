@@ -17,9 +17,15 @@ private:
     // extensionokat
     VkInstance instance;
 
+    // A kiválasztott videókártya (ezt a Vulkan magától megsemmisíti, nem kell a cleanup-ba tenni)
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
     void initWindow();
     void initVulkan();
     void mainLoop();
     void cleanup();
     void createInstance();
+    //GPU kiválasztás
+    void pickPhysicalDevice();
+    bool isDeviceSuitable(VkPhysicalDevice device);
 };

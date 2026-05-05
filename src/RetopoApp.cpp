@@ -36,6 +36,7 @@ void RetopoApp::initWindow() {
 
 void RetopoApp::initVulkan() {
     createInstance();
+    pickPhysicalDevice();
 }
 
 void RetopoApp::mainLoop() {
@@ -101,4 +102,40 @@ void RetopoApp::createInstance() {
     }
 
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
+}
+
+void RetopoApp::pickPhysicalDevice() {
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+    if (deviceCount == 0) {
+        throw std::runtime_error("Hiba: Nem talalhato Vulkan kompatibilis videokartya!");
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+    for (const auto& device : devices) {
+        if (isDeviceSuitable(device)) {
+            physicalDevice = device;
+            break;
+        }
+    }
+
+    if (physicalDevice == VK_NULL_HANDLE) {
+        throw std::runtime_error("Hiba: Nem talalhato a feladatra alkalmas videokartya!");
+    }
+}
+
+bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
+    // Lekérdezzük a kártya tulajdonságait (pl. név, típus)
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+
+    // Később itt fogjuk ellenőrizni, hogy a kártya tud-e pl. geometriai shadereket (retopohoz hasznos),
+    // de egyelőre bármilyen Vulkan-képes kártyát elfogadunk.
+
+    std::cout << "Megtalalt GPU: " << deviceProperties.deviceName << std::endl;
+
+    return true;
 }
