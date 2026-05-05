@@ -1,0 +1,9 @@
+# CLion specifikus beállítások
+.idea/
+
+# CMake által generált build mappák
+cmake-build-*/
+build/
+
+# Mac specifikus rendszerfájlok
+.DS_Store
