@@ -5,6 +5,7 @@
 #include <vector>
 #include <optional>
 
+// Ebbe gyüjtjük össze a parancs családokat
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily; // A megjelenítésért felelős részleg
@@ -13,6 +14,13 @@ struct QueueFamilyIndices {
     bool isComplete() {
         return graphicsFamily.has_value() && presentFamily.has_value();
     }
+};
+
+// Ebbe a csomagba gyűjtjük össze a monitor/ablak képességeit
+struct SwapChainSupportDetails {
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
 };
 
 class RetopoApp {
@@ -34,17 +42,33 @@ private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;        // A csatorna, ami kiküldi a képet az ablakra
 
+    // --- ÚJ VÁLTOZÓK A SWAP CHAIN-HEZ ---
+    VkSwapchainKHR swapChain;                   // Maga a csere-lánc objektum
+    std::vector<VkImage> swapChainImages;       // A vásznak (képek) amikre rajzolunk majd
+    VkFormat swapChainImageFormat;              // A kiválasztott színformátum
+    VkExtent2D swapChainExtent;                 // A vásznak tényleges felbontása (szélesség, magasság)
+
     void initWindow();
     void initVulkan();
     void mainLoop();
     void cleanup();
     void createInstance();
 
-    // --- ÚJ FÜGGVÉNY ---
     void createSurface();
 
     void pickPhysicalDevice();
     bool isDeviceSuitable(VkPhysicalDevice device);
+
+    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     void createLogicalDevice();
+
+    void createSwapChain();
+    // Segédfüggvények a Swap Chain beállításához:
+    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+
 };

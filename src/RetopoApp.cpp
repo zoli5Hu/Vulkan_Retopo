@@ -21,6 +21,11 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+// A kártyától elvárt kiterjesztések listája (A Swap Chain-hez)
+const std::vector<const char *> deviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
 void RetopoApp::run() {
     initWindow();
     initVulkan();
@@ -40,6 +45,7 @@ void RetopoApp::initVulkan() {
     createSurface(); // <-- Felszín létrehozása a kártya választás ELŐTT
     pickPhysicalDevice();
     createLogicalDevice(); // Létrehozzuk a logikai eszközt
+    createSwapChain(); // <--- ÚJ: Swap Chain létrehozása
 }
 
 void RetopoApp::mainLoop() {
@@ -50,6 +56,8 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
+    // ÚJ: Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
+    vkDestroySwapchainKHR(device, swapChain, nullptr);
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr); // Felszín törlése
@@ -87,6 +95,7 @@ void RetopoApp::createInstance() {
     // MAC SPECIFIKUS: Csak akkor adjuk hozzá a MoltenVK kiterjesztést, ha Apple gépen fordul a kód
 #ifdef __APPLE__
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME); // <--- EZ AZ ÚJ SOR
     //megfelelő bit bekapcsolása bitmask
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
@@ -141,6 +150,7 @@ void RetopoApp::pickPhysicalDevice() {
     }
 }
 
+
 bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
     // Lekérdezzük a kártya tulajdonságait (pl. név, típus)
     VkPhysicalDeviceProperties deviceProperties;
@@ -148,11 +158,74 @@ bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
 
     QueueFamilyIndices indices = findQueueFamilies(device);
 
-    // Később itt fogjuk ellenőrizni, hogy a kártya tud-e pl. geometriai shadereket (retopohoz hasznos),
-    // de egyelőre bármilyen Vulkan-képes kártyát elfogadunk.
+    //Ellenőrizzük, hogy a kártya támogatja-e a Swap Chain-t
+    bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+    // ÚJ: Ellenőrizzük, hogy van-e közös formátum a monitorral (csak akkor, ha a Swap Chain kiterjesztés létezik!)
+    bool swapChainAdequate = false;
+    if (extensionsSupported) {
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+        // Akkor megfelelő, ha legalább 1 formátumot ÉS 1 megjelenítési módot találunk
+        swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+    }
+
     std::cout << "Megtalalt GPU: " << deviceProperties.deviceName << std::endl;
 
-    return indices.isComplete();
+    // Csak akkor jó a kártya, ha mindhárom feltétel teljesül
+    return indices.isComplete() && extensionsSupported && swapChainAdequate;
+}
+// ÚJ FÜGGVÉNY: Támogatja a kártya a kötelező kiterjesztéseket?
+bool RetopoApp::checkDeviceExtensionSupport(VkPhysicalDevice device) {
+    uint32_t extensionCount;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+    // Egy halmazba (set) tesszük a kötelező kiterjesztéseket
+    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+
+    // MAC SPECIFIKUS: Apple gépen a portability subset-et is hozzá kell adnunk a kötelező listához
+#ifdef __APPLE__
+    requiredExtensions.insert("VK_KHR_portability_subset");
+#endif
+
+    // Végigmegyünk a kártya által támogatottakon, és amit megtalálunk, kihúzzuk a listánkból
+    for (const auto &extension: availableExtensions) {
+        requiredExtensions.erase(extension.extensionName);
+    }
+
+    // Ha a lista kiürült, az azt jelenti, hogy minden kötelező kiterjesztés megvan!
+    return requiredExtensions.empty();
+}
+
+// ÚJ FÜGGVÉNY: Lekérdezi az ablak/monitor tulajdonságait a Swap Chain-hez
+SwapChainSupportDetails RetopoApp::querySwapChainSupport(VkPhysicalDevice device) {
+
+    SwapChainSupportDetails details;
+    // 1. Képességek (Capabilities) lekérdezése
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+    // 2. Támogatott színformátumok lekérdezése
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+
+    if (formatCount != 0) {
+        //kétlépcsős azonosítás mivel nemtujuk hány formátum van ezért itt ofglalunk helyet mert már megszámoltuk
+        details.formats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+    }
+
+    // 3. Megjelenítési módok (Present Modes) lekérdezése
+    uint32_t presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+
+    if (presentModeCount != 0) {
+        details.presentModes.resize(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+    }
+
+    return details;
 }
 
 //videókártya részlegének kiválasztásai
@@ -197,7 +270,7 @@ void RetopoApp::createLogicalDevice() {
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
     float queuePriority = 1.0f;
-    for (uint32_t queueFamily : uniqueQueueFamilies) {
+    for (uint32_t queueFamily: uniqueQueueFamilies) {
         VkDeviceQueueCreateInfo queueCreateInfo{};
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queueCreateInfo.queueFamilyIndex = queueFamily;
@@ -219,13 +292,13 @@ void RetopoApp::createLogicalDevice() {
     createInfo.enabledExtensionCount = 0;
 
     // MAC SPECIFIKUS: Ha Apple gépen vagyunk, kötelező a portability subset a logikai eszközhöz is
+    std::vector<const char*> actualDeviceExtensions = deviceExtensions;
 #ifdef __APPLE__
-    const std::vector<const char *> deviceExtensions = {
-        "VK_KHR_portability_subset"
-    };
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    actualDeviceExtensions.push_back("VK_KHR_portability_subset");
 #endif
+
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(actualDeviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = actualDeviceExtensions.data();
 
     if (enableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
@@ -241,3 +314,116 @@ void RetopoApp::createLogicalDevice() {
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue); //  Kép megjelenítő futószalag
 }
+
+// --- SWAP CHAIN SEGÉDFÜGGVÉNYEK ---
+
+// 1. Színformátum kiválasztása (Keressük a szabványos sRGB-t)
+VkSurfaceFormatKHR RetopoApp::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+    for (const auto& availableFormat : availableFormats) {
+        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return availableFormat;
+        }
+    }
+    // Ha nincs sRGB, jó lesz az első is, amit a kártya ajánl
+    return availableFormats[0];
+}
+
+// 2. Megjelenítési mód (Keressük a Triple Bufferinget)
+VkPresentModeKHR RetopoApp::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+    for (const auto& availablePresentMode : availablePresentModes) {
+        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return availablePresentMode;
+        }
+    }
+    // A V-Sync (FIFO) kötelezően támogatott mindenhol, ez a tökéletes B-terv
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+// 3. Felbontás beállítása (GLFW ablakméret és monitor pixelek összehangolása)
+VkExtent2D RetopoApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        return capabilities.currentExtent;
+    } else {
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+
+        VkExtent2D actualExtent = {
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height)
+        };
+
+        // Biztosítjuk, hogy az ablak mérete ne lógjon ki a monitor által támogatott minimum és maximum közül
+        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+        return actualExtent;
+    }
+}
+
+// --- FŐ SWAP CHAIN LÉTREHOZÓ FÜGGVÉNY ---
+void RetopoApp::createSwapChain() {
+    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+
+    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+    VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+
+    // Képkockák (vásznak) száma a láncban. A minimum + 1-et kérjük, hogy a GPU ne várakozzon ránk.
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+
+    // Ellenőrizzük, hogy nem léptük-e túl a kártya által támogatott maximumot (a 0 azt jelenti, nincs felső határ)
+    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
+        imageCount = swapChainSupport.capabilities.maxImageCount;
+    }
+
+    // A Swap Chain megrendelőlapja
+    VkSwapchainCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface = surface;
+    createInfo.minImageCount = imageCount;
+    createInfo.imageFormat = surfaceFormat.format;
+    createInfo.imageColorSpace = surfaceFormat.colorSpace;
+    createInfo.imageExtent = extent;
+    createInfo.imageArrayLayers = 1; // Mindig 1, kivéve ha VR (sztereoszkopikus) 3D-t fejlesztenénk
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Erre a képre egyenesen színeket fogunk rajzolni
+
+    // Hogyan kezeljék a képeket a különböző Queue-k (Grafikus és Megjelenítő)?
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+
+    if (indices.graphicsFamily != indices.presentFamily) {
+        // Ha két külön chip felel a rajzolásért és a megjelenítésért (ritka)
+        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        createInfo.queueFamilyIndexCount = 2;
+        createInfo.pQueueFamilyIndices = queueFamilyIndices;
+    } else {
+        // A kártyák 99%-ánál ugyanaz a futószalag csinálja mindkettőt, ez sokkal gyorsabb
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        createInfo.queueFamilyIndexCount = 0; // Opcionális
+        createInfo.pQueueFamilyIndices = nullptr; // Opcionális
+    }
+
+    createInfo.preTransform = swapChainSupport.capabilities.currentTransform; // Ne forgassa el a képet (pl. telefonokon lehetne)
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Ne legyen átlátszó az ablakunk háttere
+    createInfo.presentMode = presentMode;
+    createInfo.clipped = VK_TRUE; // Ha egy másik ablak kitakarja a miénket, ott ne számoljon a GPU pixeleket (optimalizáció)
+    createInfo.oldSwapchain = VK_NULL_HANDLE; // Később (pl. ablak átméretezésnél) ide jön a régi swap chain
+
+    // Végre hozzuk létre!
+    if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Swap Chain-t!");
+    }
+
+    // Kérjük le a legyártott vásznakat (képeket) és mentsük el őket a vektorunkba
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+    swapChainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+
+    // Mentsük el a formátumot és a méretet is a későbbi használathoz
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent = extent;
+
+    std::cout << "Swap Chain és " << imageCount << " db vaszon sikeresen letrehozva!" << std::endl;
+}
+
+
