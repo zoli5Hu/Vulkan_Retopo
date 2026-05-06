@@ -9,15 +9,15 @@ const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
 // Bekapcsoljuk a Khronos hivatalos hibakereső rétegét
-const std::vector<const char*> validationLayers = {
+const std::vector<const char *> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 
 //ha debug modban vagyunk akkor true
 #ifdef NDEBUG
-    const bool enableValidationLayers = false;
+const bool enableValidationLayers = false;
 #else
-    const bool enableValidationLayers = true;
+const bool enableValidationLayers = true;
 #endif
 
 void RetopoApp::run() {
@@ -37,6 +37,7 @@ void RetopoApp::initWindow() {
 void RetopoApp::initVulkan() {
     createInstance();
     pickPhysicalDevice();
+    createLogicalDevice(); // Létrehozzuk a logikai eszközt
 }
 
 void RetopoApp::mainLoop() {
@@ -47,6 +48,8 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
+    // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
+    vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -75,15 +78,15 @@ void RetopoApp::createInstance() {
 
     // --- 1. KITERJESZTÉSEK BEÁLLÍTÁSA (Multiplatform módra) ---
     uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
     // MAC SPECIFIKUS: Csak akkor adjuk hozzá a MoltenVK kiterjesztést, ha Apple gépen fordul a kód
-    #ifdef __APPLE__
-        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-        //megfelelő bit bekapcsolása bitmask
-        createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-    #endif
+#ifdef __APPLE__
+    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+    //megfelelő bit bekapcsolása bitmask
+    createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
 
     createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
@@ -115,7 +118,7 @@ void RetopoApp::pickPhysicalDevice() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    for (const auto& device : devices) {
+    for (const auto &device: devices) {
         if (isDeviceSuitable(device)) {
             physicalDevice = device;
             break;
@@ -132,10 +135,83 @@ bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
+    QueueFamilyIndices indices = findQueueFamilies(device);
+
     // Később itt fogjuk ellenőrizni, hogy a kártya tud-e pl. geometriai shadereket (retopohoz hasznos),
     // de egyelőre bármilyen Vulkan-képes kártyát elfogadunk.
 
     std::cout << "Megtalalt GPU: " << deviceProperties.deviceName << std::endl;
 
-    return true;
+    return indices.isComplete();
+}
+
+//videókártya részlegének kiválasztásaí
+QueueFamilyIndices RetopoApp::findQueueFamilies(VkPhysicalDevice device) {
+    QueueFamilyIndices indices;
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+    int i = 0;
+    for (const auto &queueFamily: queueFamilies) {
+        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            indices.graphicsFamily = i;
+        }
+
+        if (indices.isComplete()) {
+            break;
+        }
+
+        i++;
+    }
+
+    return indices;
+}
+
+//ez felel a komunikációért a gpuval
+void RetopoApp::createLogicalDevice() {
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+    queueCreateInfo.queueCount = 1;
+
+    float queuePriority = 1.0f;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+    createInfo.pQueueCreateInfos = &queueCreateInfo;
+    createInfo.queueCreateInfoCount = 1;
+
+    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    createInfo.enabledExtensionCount = 0;
+
+    // MAC SPECIFIKUS: Ha Apple gépen vagyunk, szükség lehet a portability extension-re
+#ifdef __APPLE__
+    const std::vector<const char *> deviceExtensions = {
+        "VK_KHR_portability_subset"
+    };
+#endif
+
+    if (enableValidationLayers) {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+        createInfo.ppEnabledLayerNames = validationLayers.data();
+    } else {
+        createInfo.enabledLayerCount = 0;
+    }
+
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a logikai eszközt!");
+    }
+
+    vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
 }
