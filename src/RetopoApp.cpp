@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
+#include <set> // Új könyvtár a duplikációk elkerüléséhez
 
 //képernyő megadás
 const uint32_t WIDTH = 800;
@@ -36,6 +37,7 @@ void RetopoApp::initWindow() {
 
 void RetopoApp::initVulkan() {
     createInstance();
+    createSurface(); // <-- Felszín létrehozása a kártya választás ELŐTT
     pickPhysicalDevice();
     createLogicalDevice(); // Létrehozzuk a logikai eszközt
 }
@@ -50,6 +52,7 @@ void RetopoApp::mainLoop() {
 void RetopoApp::cleanup() {
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
+    vkDestroySurfaceKHR(instance, surface, nullptr); // Felszín törlése
     vkDestroyInstance(instance, nullptr);
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -107,6 +110,14 @@ void RetopoApp::createInstance() {
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
 }
 
+// --- ÚJ FÜGGVÉNY: Felszín létrehozása ---
+void RetopoApp::createSurface() {
+    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Window Surface-t!");
+    }
+    std::cout << "Window Surface sikeresen letrehozva!" << std::endl;
+}
+
 void RetopoApp::pickPhysicalDevice() {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
@@ -139,13 +150,12 @@ bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
 
     // Később itt fogjuk ellenőrizni, hogy a kártya tud-e pl. geometriai shadereket (retopohoz hasznos),
     // de egyelőre bármilyen Vulkan-képes kártyát elfogadunk.
-
     std::cout << "Megtalalt GPU: " << deviceProperties.deviceName << std::endl;
 
     return indices.isComplete();
 }
 
-//videókártya részlegének kiválasztásaí
+//videókártya részlegének kiválasztásai
 QueueFamilyIndices RetopoApp::findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
 
@@ -157,8 +167,16 @@ QueueFamilyIndices RetopoApp::findQueueFamilies(VkPhysicalDevice device) {
 
     int i = 0;
     for (const auto &queueFamily: queueFamilies) {
+        // 1. Tud rajzolni?
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphicsFamily = i;
+        }
+
+        // 2. ÚJ: Tudja kezelni az ablakunkat (Surface)?
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if (presentSupport) {
+            indices.presentFamily = i;
         }
 
         if (indices.isComplete()) {
@@ -175,31 +193,38 @@ QueueFamilyIndices RetopoApp::findQueueFamilies(VkPhysicalDevice device) {
 void RetopoApp::createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
-    VkDeviceQueueCreateInfo queueCreateInfo{};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-    queueCreateInfo.queueCount = 1;
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
     float queuePriority = 1.0f;
-    queueCreateInfo.pQueuePriorities = &queuePriority;
+    for (uint32_t queueFamily : uniqueQueueFamilies) {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
-    createInfo.pQueueCreateInfos = &queueCreateInfo;
-    createInfo.queueCreateInfoCount = 1;
+    // Itt átadjuk az összes szükséges Queue-t (ha 1 db, ha 2 db)
+    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
     createInfo.pEnabledFeatures = &deviceFeatures;
-
     createInfo.enabledExtensionCount = 0;
 
-    // MAC SPECIFIKUS: Ha Apple gépen vagyunk, szükség lehet a portability extension-re
+    // MAC SPECIFIKUS: Ha Apple gépen vagyunk, kötelező a portability subset a logikai eszközhöz is
 #ifdef __APPLE__
     const std::vector<const char *> deviceExtensions = {
         "VK_KHR_portability_subset"
     };
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 #endif
 
     if (enableValidationLayers) {
@@ -214,4 +239,5 @@ void RetopoApp::createLogicalDevice() {
     }
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+    vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue); //  Kép megjelenítő futószalag
 }

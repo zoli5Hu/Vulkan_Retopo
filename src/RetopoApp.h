@@ -5,13 +5,13 @@
 #include <vector>
 #include <optional>
 
-// Egy kis segédstruktúra, ami tárolja, hogy megvan-e a grafikus sor a kártyán
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily; // A megjelenítésért felelős részleg
 
-    // Akkor teljes, ha találtunk grafikus sort
+    // Akkor teljes, ha tud grafikát számolni ÉS meg is tudja jeleníteni
     bool isComplete() {
-        return graphicsFamily.has_value();
+        return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
 
@@ -27,24 +27,24 @@ private:
     // layereket
     // extensionokat
     VkInstance instance;
+    VkSurfaceKHR surface;        // A vászon, ami összeköti a Vulkant az ablakkal
 
-    // A kiválasztott videókártya (ezt a Vulkan magától megsemmisíti, nem kell a cleanup-ba tenni)
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-
-    //queue family meghatározása
-    VkDevice device;             // A logikai eszköz (a szerződés a kártyával)
-    VkQueue graphicsQueue;       // A csatorna, amin a grafikus parancsokat küldjük
+    VkDevice device;
+    VkQueue graphicsQueue;
+    VkQueue presentQueue;        // A csatorna, ami kiküldi a képet az ablakra
 
     void initWindow();
     void initVulkan();
     void mainLoop();
     void cleanup();
     void createInstance();
-    //GPU kiválasztás
+
+    // --- ÚJ FÜGGVÉNY ---
+    void createSurface();
+
     void pickPhysicalDevice();
     bool isDeviceSuitable(VkPhysicalDevice device);
-
-    // --- ÚJ FÜGGVÉNYEK ---
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     void createLogicalDevice();
 };

@@ -15,16 +15,20 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 - **Validation Layers:** Debug módban automatikusan bekapcsolnak a Khronos hibaellenőrző rétegei, amik azonnal szólnak, ha valami nem a Vulkan specifikációi szerint történik.
 - **Portability (Mac):** Apple Silicon / macOS környezetben a rendszer automatikusan betölti a `VK_KHR_portability_enumeration` kiterjesztéseket a MoltenVK futtatásához.
 
-### 3. Hardver Kiválasztása (`VkPhysicalDevice`)
-- A program lekérdezi a gépben lévő összes videókártyát.
-- Megvizsgálja a kártyák "részlegeit" (**Queue Families**), és kiválaszt egy olyan hardvert, ami rendelkezik grafikus renderelésre alkalmas számítási sorral (`VK_QUEUE_GRAPHICS_BIT`).
+### 3. Ablak Felszín (`VkSurfaceKHR`)
+- A natív híd a Vulkan motor és az operációs rendszer (ablakkezelő) között.
+- Ez az a "vászon", ahová a videókártya a végleges, kiszámolt képeket továbbítja. A GLFW automatikusan lekezeli a platformspecifikus (Windows/Mac) eltéréseket a létrehozásakor.
 
-### 4. Kapcsolat a hardverrel (`VkDevice` és `VkQueue`)
+### 4. Hardver Kiválasztása (`VkPhysicalDevice`)
+- A program lekérdezi a gépben lévő összes videókártyát.
+- Megvizsgálja a kártyák "részlegeit" (**Queue Families**), és kiválaszt egy olyan hardvert, ami rendelkezik grafikus renderelésre alkalmas számítási sorral (`VK_QUEUE_GRAPHICS_BIT`), **ÉS** támogatja a megjelenítést a létrehozott ablakhidunkon (`presentSupport`).
+
+### 5. Kapcsolat a hardverrel (`VkDevice` és `VkQueue`)
 - **Logical Device (`VkDevice`):** Ez a "szerződés" a kiválasztott videókártyával. A program hátralévő részében a memóriafoglalások, shaderek és rajzolási parancsok ezen a logikai eszközön keresztül futnak.
-- **Graphics Queue (`VkQueue`):** A logikai eszközből sikeresen lekért "futószalag", amin keresztül a program beküldi a grafikus parancsokat a GPU-ba.
+- **Graphics Queue:** A "munkások futószalagja", amin keresztül a program beküldi a grafikus számítási parancsokat a GPU-ba.
+- **Present Queue:** A "kézbesítő futószalag", ami az elkészült képeket kiküldi a `VkSurfaceKHR` felületre, hogy megjelenjenek a képernyőn. A rendszer okosan (egy `std::set` segítségével) felismeri, ha a rajzoló és a megjelenítő chip ugyanaz, így elkerüli a felesleges memóriafoglalást.
 
 ## 📁 Projekt Struktúra
-
 ```text
 Vulkan_Retopo/
  ├── CMakeLists.txt      # Multiplatform build konfiguráció
