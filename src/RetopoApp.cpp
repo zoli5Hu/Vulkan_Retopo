@@ -97,7 +97,7 @@ void RetopoApp::cleanup() {
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
 
-    // ÚJ: Debug Messenger megsemmisítése
+    // : Debug Messenger megsemmisítése
     if (enableValidationLayers) {
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
     }
@@ -142,7 +142,7 @@ void RetopoApp::createInstance() {
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
 
-    // ÚJ: Debug kiterjesztés hozzáadása
+    // : Debug kiterjesztés hozzáadása
     if (enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
@@ -524,7 +524,7 @@ void RetopoApp::createImageViews() {
     std::cout << swapChainImageViews.size() << " db Image View sikeresen letrehozva!" << std::endl;
 }
 
-// --- ÚJ FÜGGVÉNYEK: Debug Messenger beállítása ---
+// ---  FÜGGVÉNYEK: Debug Messenger beállítása ---
 void RetopoApp::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
     createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;

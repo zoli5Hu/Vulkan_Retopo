@@ -3,8 +3,44 @@ project(Pro)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# 1. Vulkan megkeresése
-find_package(Vulkan REQUIRED)
+# 1. Vulkan megkeresése (glslc komponenssel!)
+find_package(Vulkan REQUIRED glslc)
+
+# --- SHADEREK BEÁLLÍTÁSA ---
+set(SHADER_OUTPUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
+
+# Vertex Shader
+set(VERT_SHADER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert)
+set(VERT_SHADER_SPV ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vert.spv)
+
+# Fragment Shader
+set(FRAG_SHADER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag)
+set(FRAG_SHADER_SPV ${CMAKE_CURRENT_SOURCE_DIR}/shaders/frag.spv)
+
+# shader.vert -> vert.spv
+add_custom_command(
+        OUTPUT ${VERT_SHADER_SPV}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUTPUT_DIR}
+        COMMAND Vulkan::glslc ${VERT_SHADER_SRC} -o ${VERT_SHADER_SPV}
+        DEPENDS ${VERT_SHADER_SRC}
+        COMMENT "Compiling vertex shader"
+)
+
+# shader.frag -> frag.spv
+add_custom_command(
+        OUTPUT ${FRAG_SHADER_SPV}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUTPUT_DIR}
+        COMMAND Vulkan::glslc ${FRAG_SHADER_SRC} -o ${FRAG_SHADER_SPV}
+        DEPENDS ${FRAG_SHADER_SRC}
+        COMMENT "Compiling fragment shader"
+)
+
+# Target létrehozása a shaderekhez
+add_custom_target(
+        CompileShaders ALL
+        DEPENDS ${VERT_SHADER_SPV} ${FRAG_SHADER_SPV}
+)
+# --- SHADER BLOKK VÉGE ---
 
 # 2. GLFW kezelése (FetchContent - Automata letöltés, ha nincs meg a gépen)
 include(FetchContent)
@@ -24,11 +60,14 @@ if(NOT glfw3_FOUND)
     FetchContent_MakeAvailable(glfw)
 endif()
 
-# 3. A programod (Itt mondjuk meg, hogy a main.cpp mellett az src/RetopoApp.cpp is a projekt része)
+# 3. A programod
 add_executable(Pro
         main.cpp
         src/RetopoApp.cpp
 )
+
+# Ez biztosítja, hogy a shaderek leforduljanak az exe előtt
+add_dependencies(Pro CompileShaders)
 
 # 4. Hozzácsatolás
 target_include_directories(Pro PRIVATE ${Vulkan_INCLUDE_DIRS})
