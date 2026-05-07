@@ -47,14 +47,21 @@ private:
     VkFormat swapChainImageFormat;              // A kiválasztott színformátum
     VkExtent2D swapChainExtent;                 // A vásznak tényleges felbontása (szélesség, magasság)
 
-    // --- ÚJ VÁLTOZÓ: A képek "lencséi" ---
+    // ---  VÁLTOZÓ: A képek "lencséi" ---
     std::vector<VkImageView> swapChainImageViews;
+
+    // --- ÚJ VÁLTOZÓ ---
+    VkDebugUtilsMessengerEXT debugMessenger;
 
     void initWindow();
     void initVulkan();
     void mainLoop();
     void cleanup();
     void createInstance();
+
+    // --- ÚJ FÜGGVÉNYEK ---
+    void setupDebugMessenger();
+    void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 
     void createSurface();
 

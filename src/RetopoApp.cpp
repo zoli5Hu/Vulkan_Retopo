@@ -26,6 +26,37 @@ const std::vector<const char *> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
+// --- : Proxy függvények a Debug Messenger betöltéséhez ---
+VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
+                                      const VkAllocationCallbacks *pAllocator,
+                                      VkDebugUtilsMessengerEXT *pDebugMessenger) {
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+    } else {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger,
+                                   const VkAllocationCallbacks *pAllocator) {
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)
+            vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        func(instance, debugMessenger, pAllocator);
+    }
+}
+
+// --- : Maga a Callback függvény, ami kiírja a hibákat ---
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+    void *pUserData) {
+    std::cerr << ">>> VULKAN VALIDATION LAYER: " << pCallbackData->pMessage << std::endl << std::endl;
+    return VK_FALSE;
+}
+
 void RetopoApp::run() {
     initWindow();
     initVulkan();
@@ -42,11 +73,12 @@ void RetopoApp::initWindow() {
 
 void RetopoApp::initVulkan() {
     createInstance();
+    setupDebugMessenger(); // <---
     createSurface(); // <-- Felszín létrehozása a kártya választás ELŐTT
     pickPhysicalDevice();
     createLogicalDevice(); // Létrehozzuk a logikai eszközt
     createSwapChain(); // <---  Swap Chain létrehozása
-    createImageViews(); // <--- ÚJ: Image View-k létrehozása
+    createImageViews(); // <--- : Image View-k létrehozása
 }
 
 void RetopoApp::mainLoop() {
@@ -57,13 +89,19 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
-    for (auto imageView : swapChainImageViews) {
+    for (auto imageView: swapChainImageViews) {
         vkDestroyImageView(device, imageView, nullptr);
     }
     //  Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
     vkDestroySwapchainKHR(device, swapChain, nullptr);
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
+
+    // ÚJ: Debug Messenger megsemmisítése
+    if (enableValidationLayers) {
+        DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+    }
+
     vkDestroySurfaceKHR(instance, surface, nullptr); // Felszín törlése
     vkDestroyInstance(instance, nullptr);
     glfwDestroyWindow(window);
@@ -99,20 +137,31 @@ void RetopoApp::createInstance() {
     // MAC SPECIFIKUS: Csak akkor adjuk hozzá a MoltenVK kiterjesztést, ha Apple gépen fordul a kód
 #ifdef __APPLE__
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME); // <--- EZ AZ  SOR
+    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     //megfelelő bit bekapcsolása bitmask
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
 
+    // ÚJ: Debug kiterjesztés hozzáadása
+    if (enableValidationLayers) {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
     createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
 
-    // --- 2. VALIDATION LAYEREK BEÁLLÍTÁSA ---
+    // --- 2. VALIDATION LAYEREK ÉS DEBUGGER BEÁLLÍTÁSA ---
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
     if (enableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
         createInfo.ppEnabledLayerNames = validationLayers.data();
+
+        populateDebugMessengerCreateInfo(debugCreateInfo);
+        createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *) &debugCreateInfo;
+        // Hibák elkapása a létrehozás/törlés során
     } else {
         createInfo.enabledLayerCount = 0;
+        createInfo.pNext = nullptr;
     }
 
     // --- 3. VULKAN INSTANCE LÉTREHOZÁSA ---
@@ -122,6 +171,7 @@ void RetopoApp::createInstance() {
 
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
 }
+
 
 // ---  FÜGGVÉNY: Felszín létrehozása ---
 void RetopoApp::createSurface() {
@@ -178,6 +228,7 @@ bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
     // Csak akkor jó a kártya, ha mindhárom feltétel teljesül
     return indices.isComplete() && extensionsSupported && swapChainAdequate;
 }
+
 //  FÜGGVÉNY: Támogatja a kártya a kötelező kiterjesztéseket?
 bool RetopoApp::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     uint32_t extensionCount;
@@ -205,7 +256,6 @@ bool RetopoApp::checkDeviceExtensionSupport(VkPhysicalDevice device) {
 
 //  FÜGGVÉNY: Lekérdezi az ablak/monitor tulajdonságait a Swap Chain-hez
 SwapChainSupportDetails RetopoApp::querySwapChainSupport(VkPhysicalDevice device) {
-
     SwapChainSupportDetails details;
     // 1. Képességek (Capabilities) lekérdezése
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
@@ -295,7 +345,7 @@ void RetopoApp::createLogicalDevice() {
     createInfo.enabledExtensionCount = 0;
 
     // MAC SPECIFIKUS: Ha Apple gépen vagyunk, kötelező a portability subset a logikai eszközhöz is
-    std::vector<const char*> actualDeviceExtensions = deviceExtensions;
+    std::vector<const char *> actualDeviceExtensions = deviceExtensions;
 #ifdef __APPLE__
     actualDeviceExtensions.push_back("VK_KHR_portability_subset");
 #endif
@@ -321,9 +371,10 @@ void RetopoApp::createLogicalDevice() {
 // --- SWAP CHAIN SEGÉDFÜGGVÉNYEK ---
 
 // 1. Színformátum kiválasztása (Keressük a szabványos sRGB-t)
-VkSurfaceFormatKHR RetopoApp::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    for (const auto& availableFormat : availableFormats) {
-        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+VkSurfaceFormatKHR RetopoApp::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
+    for (const auto &availableFormat: availableFormats) {
+        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace ==
+            VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
         }
     }
@@ -332,8 +383,8 @@ VkSurfaceFormatKHR RetopoApp::chooseSwapSurfaceFormat(const std::vector<VkSurfac
 }
 
 // 2. Megjelenítési mód (Keressük a Triple Bufferinget)
-VkPresentModeKHR RetopoApp::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    for (const auto& availablePresentMode : availablePresentModes) {
+VkPresentModeKHR RetopoApp::chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes) {
+    for (const auto &availablePresentMode: availablePresentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
             return availablePresentMode;
         }
@@ -343,7 +394,7 @@ VkPresentModeKHR RetopoApp::chooseSwapPresentMode(const std::vector<VkPresentMod
 }
 
 // 3. Felbontás beállítása (GLFW ablakméret és monitor pixelek összehangolása)
-VkExtent2D RetopoApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+VkExtent2D RetopoApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     } else {
@@ -356,8 +407,10 @@ VkExtent2D RetopoApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilit
         };
 
         // Biztosítjuk, hogy az ablak mérete ne lógjon ki a monitor által támogatott minimum és maximum közül
-        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width,
+                                        capabilities.maxImageExtent.width);
+        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height,
+                                         capabilities.maxImageExtent.height);
 
         return actualExtent;
     }
@@ -406,10 +459,12 @@ void RetopoApp::createSwapChain() {
         createInfo.pQueueFamilyIndices = nullptr; // Opcionális
     }
 
-    createInfo.preTransform = swapChainSupport.capabilities.currentTransform; // Ne forgassa el a képet (pl. telefonokon lehetne)
+    createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+    // Ne forgassa el a képet (pl. telefonokon lehetne)
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Ne legyen átlátszó az ablakunk háttere
     createInfo.presentMode = presentMode;
-    createInfo.clipped = VK_TRUE; // Ha egy másik ablak kitakarja a miénket, ott ne számoljon a GPU pixeleket (optimalizáció)
+    createInfo.clipped = VK_TRUE;
+    // Ha egy másik ablak kitakarja a miénket, ott ne számoljon a GPU pixeleket (optimalizáció)
     createInfo.oldSwapchain = VK_NULL_HANDLE; // Később (pl. ablak átméretezésnél) ide jön a régi swap chain
 
     // Végre hozzuk létre!
@@ -429,7 +484,7 @@ void RetopoApp::createSwapChain() {
     std::cout << "Swap Chain és " << imageCount << " db vaszon sikeresen letrehozva!" << std::endl;
 }
 
-// --- ÚJ FÜGGVÉNY: Image View-k (Nézetek) létrehozása ---
+// ---  FÜGGVÉNY: Image View-k (Nézetek) létrehozása ---
 //ez felel azért hogy a swapchan képeihez hozzáférjünk
 void RetopoApp::createImageViews() {
     // Pontosan annyi nézet kell, ahány képünk van a láncban
@@ -469,4 +524,26 @@ void RetopoApp::createImageViews() {
     std::cout << swapChainImageViews.size() << " db Image View sikeresen letrehozva!" << std::endl;
 }
 
+// --- ÚJ FÜGGVÉNYEK: Debug Messenger beállítása ---
+void RetopoApp::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
+    createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    // Miket írjon ki? (WARNING és ERROR a legfontosabb, a VERBOSE mindent IS kiír, most azt kikapcsoljuk, hogy ne spam-eljen)
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = debugCallback;
+}
 
+void RetopoApp::setupDebugMessenger() {
+    if (!enableValidationLayers) return;
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo;
+    populateDebugMessengerCreateInfo(createInfo);
+
+    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult beallitani a Debug Messengert!");
+    }
+}
