@@ -42,11 +42,13 @@ private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;        // A csatorna, ami kiküldi a képet az ablakra
 
-    // --- ÚJ VÁLTOZÓK A SWAP CHAIN-HEZ ---
     VkSwapchainKHR swapChain;                   // Maga a csere-lánc objektum
     std::vector<VkImage> swapChainImages;       // A vásznak (képek) amikre rajzolunk majd
     VkFormat swapChainImageFormat;              // A kiválasztott színformátum
     VkExtent2D swapChainExtent;                 // A vásznak tényleges felbontása (szélesség, magasság)
+
+    // --- ÚJ VÁLTOZÓ: A képek "lencséi" ---
+    std::vector<VkImageView> swapChainImageViews;
 
     void initWindow();
     void initVulkan();
@@ -66,6 +68,8 @@ private:
     void createLogicalDevice();
 
     void createSwapChain();
+    void createImageViews();
+
     // Segédfüggvények a Swap Chain beállításához:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);

@@ -3,7 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
-#include <set> // Új könyvtár a duplikációk elkerüléséhez
+#include <set> //  könyvtár a duplikációk elkerüléséhez
 
 //képernyő megadás
 const uint32_t WIDTH = 800;
@@ -45,7 +45,8 @@ void RetopoApp::initVulkan() {
     createSurface(); // <-- Felszín létrehozása a kártya választás ELŐTT
     pickPhysicalDevice();
     createLogicalDevice(); // Létrehozzuk a logikai eszközt
-    createSwapChain(); // <--- ÚJ: Swap Chain létrehozása
+    createSwapChain(); // <---  Swap Chain létrehozása
+    createImageViews(); // <--- ÚJ: Image View-k létrehozása
 }
 
 void RetopoApp::mainLoop() {
@@ -56,7 +57,10 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
-    // ÚJ: Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
+    for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    //  Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
     vkDestroySwapchainKHR(device, swapChain, nullptr);
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
@@ -95,7 +99,7 @@ void RetopoApp::createInstance() {
     // MAC SPECIFIKUS: Csak akkor adjuk hozzá a MoltenVK kiterjesztést, ha Apple gépen fordul a kód
 #ifdef __APPLE__
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME); // <--- EZ AZ ÚJ SOR
+    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME); // <--- EZ AZ  SOR
     //megfelelő bit bekapcsolása bitmask
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
@@ -119,7 +123,7 @@ void RetopoApp::createInstance() {
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
 }
 
-// --- ÚJ FÜGGVÉNY: Felszín létrehozása ---
+// ---  FÜGGVÉNY: Felszín létrehozása ---
 void RetopoApp::createSurface() {
     if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Window Surface-t!");
@@ -161,7 +165,7 @@ bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
     //Ellenőrizzük, hogy a kártya támogatja-e a Swap Chain-t
     bool extensionsSupported = checkDeviceExtensionSupport(device);
 
-    // ÚJ: Ellenőrizzük, hogy van-e közös formátum a monitorral (csak akkor, ha a Swap Chain kiterjesztés létezik!)
+    //  Ellenőrizzük, hogy van-e közös formátum a monitorral (csak akkor, ha a Swap Chain kiterjesztés létezik!)
     bool swapChainAdequate = false;
     if (extensionsSupported) {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
@@ -174,7 +178,7 @@ bool RetopoApp::isDeviceSuitable(VkPhysicalDevice device) {
     // Csak akkor jó a kártya, ha mindhárom feltétel teljesül
     return indices.isComplete() && extensionsSupported && swapChainAdequate;
 }
-// ÚJ FÜGGVÉNY: Támogatja a kártya a kötelező kiterjesztéseket?
+//  FÜGGVÉNY: Támogatja a kártya a kötelező kiterjesztéseket?
 bool RetopoApp::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
@@ -199,7 +203,7 @@ bool RetopoApp::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     return requiredExtensions.empty();
 }
 
-// ÚJ FÜGGVÉNY: Lekérdezi az ablak/monitor tulajdonságait a Swap Chain-hez
+//  FÜGGVÉNY: Lekérdezi az ablak/monitor tulajdonságait a Swap Chain-hez
 SwapChainSupportDetails RetopoApp::querySwapChainSupport(VkPhysicalDevice device) {
 
     SwapChainSupportDetails details;
@@ -244,8 +248,7 @@ QueueFamilyIndices RetopoApp::findQueueFamilies(VkPhysicalDevice device) {
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphicsFamily = i;
         }
-
-        // 2. ÚJ: Tudja kezelni az ablakunkat (Surface)?
+        // 2.  Tudja kezelni az ablakunkat (Surface)?
         VkBool32 presentSupport = false;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
         if (presentSupport) {
@@ -424,6 +427,46 @@ void RetopoApp::createSwapChain() {
     swapChainExtent = extent;
 
     std::cout << "Swap Chain és " << imageCount << " db vaszon sikeresen letrehozva!" << std::endl;
+}
+
+// --- ÚJ FÜGGVÉNY: Image View-k (Nézetek) létrehozása ---
+//ez felel azért hogy a swapchan képeihez hozzáférjünk
+void RetopoApp::createImageViews() {
+    // Pontosan annyi nézet kell, ahány képünk van a láncban
+    swapChainImageViews.resize(swapChainImages.size());
+
+    for (size_t i = 0; i < swapChainImages.size(); i++) {
+        VkImageViewCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = swapChainImages[i];
+
+        // 1. Milyen típusú a kép? (1D, 2D, 3D, esetleg kocka-textúra)
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+        // 2. Milyen a színformátuma? (A Swap Chain-től örököljük)
+        createInfo.format = swapChainImageFormat;
+
+        // 3. A színcsatornák "keverése" (Swizzle)
+        // Az IDENTITY azt jelenti, hogy nem keverjük fel a csatornákat, a Piros marad Piros, stb.
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+        // 4. Melyik részét akarjuk látni a képnek?
+        // Mi most egy szimpla szín-képet akarunk (COLOR_BIT), mipmapok (kicsinyített másolatok) és extra rétegek nélkül.
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Hiba: Nem sikerult letrehozni az Image View-t a kephez!");
+        }
+    }
+
+    std::cout << swapChainImageViews.size() << " db Image View sikeresen letrehozva!" << std::endl;
 }
 
 
