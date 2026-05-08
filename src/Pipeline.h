@@ -7,12 +7,18 @@
 class Pipeline {
 public:
     // A konstruktor egyből betölti a shadereket és megépíti a futószalagot
-    Pipeline(VkDevice device, const std::string& vertFilepath, const std::string& fragFilepath);
+    // Módosított konstruktor: most már kéri a renderPass-t is!
+    Pipeline(VkDevice device,
+             const std::string& vertFilepath,
+             const std::string& fragFilepath,
+             VkRenderPass renderPass,
+             VkExtent2D extent);
     ~Pipeline();
 
 private:
     VkDevice device;
     VkPipeline graphicsPipeline;
+    VkPipelineLayout pipelineLayout; // Ez kell a shader változókhoz (később)
     VkShaderModule vertShaderModule;
     VkShaderModule fragShaderModule;
 
@@ -20,8 +26,12 @@ private:
     static std::vector<char> readFile(const std::string& filepath);
 
     // A fő építő függvény
-    void createGraphicsPipeline(const std::string& vertFilepath, const std::string& fragFilepath);
-
+    // Frissített építő függvény
+    void createGraphicsPipeline(const std::string& vertFilepath,
+                                const std::string& fragFilepath,
+                                VkRenderPass renderPass,
+                                VkExtent2D extent);
+    
     // Csomagoló függvény a Vulkan Shader Modulokhoz
     VkShaderModule createShaderModule(const std::vector<char>& code);
 };

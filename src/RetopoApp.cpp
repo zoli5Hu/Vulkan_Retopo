@@ -84,8 +84,13 @@ void RetopoApp::initVulkan() {
 
 
     // --- : Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
-    graphicsPipeline = std::make_unique<Pipeline>(device, "shaders/vert.spv", "shaders/frag.spv");
-}
+    graphicsPipeline = std::make_unique<Pipeline>(
+            device,
+            "shaders/vert.spv",
+            "shaders/frag.spv",
+            renderPass,
+            swapChainExtent
+        );}
 
 void RetopoApp::mainLoop() {
     //program ablak folyamatos futása a be nem zárásig itt fogjuk pl a frameket rajzolni
