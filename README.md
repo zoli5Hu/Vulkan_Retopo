@@ -41,12 +41,20 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 - A Vulkan nem tud közvetlenül a nyers memóriába (képekre) rajzolni. Ehhez Image View-kat, azaz "lencséket" használ.
 - A motor minden egyes Swap Chain képhez automatikusan generál egy 2D-s, RGB színformátumú nézetet, felkészítve azokat a renderelési parancsok (Graphics Pipeline) fogadására.
 
+### 9. Shaderek és Grafikus Futószalag (Graphics Pipeline)
+- **GLSL és SPIR-V:** A motor beolvassa a Vertex és Fragment shadereket, amelyeket a CMake automatikusan a GPU számára olvasható SPIR-V bináris kódra fordít a `glslc` segítségével.
+- **Shader Modulok (`VkShaderModule`):** A beolvasott bináris kódból a rendszer Vulkan shader modulokat épít, amik a grafikus futószalag logikáját adják.
+- **Biztonságos Memóriakezelés:** Az objektum-orientált felépítés (külön `Pipeline` osztály) és a modern C++ okos mutatók (`std::unique_ptr`) garantálják a stabil élettartam-kezelést a Vulkan szigorú megsemmisítési sorrendjéhez igazodva.
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/
- ├── CMakeLists.txt      # Multiplatform build konfiguráció
+ ├── CMakeLists.txt      # Multiplatform build konfiguráció és shader fordítás
  ├── README.md           # Projekt leírás és architektúra
  ├── main.cpp            # Belépési pont
+ ├── shaders/            # GLSL shader forráskódok
+ │    ├── shader.vert    # Vertex shader
+ │    └── shader.frag    # Fragment shader
  └── src/                # Forráskód
-      ├── RetopoApp.h    # Az applikáció deklarációi (A "tartalomjegyzék")
-      └── RetopoApp.cpp  # A Vulkan és ablakkezelés logikája
+      ├── RetopoApp.h/cpp # Fő Vulkan motor és ablakkezelés
+      └── Pipeline.h/cpp  # Grafikus futószalag és shader betöltés
