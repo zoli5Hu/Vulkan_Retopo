@@ -84,6 +84,7 @@ void RetopoApp::initVulkan() {
     // --- ÚJ: Parancsraktár és Parancslista létrehozása ---
     createCommandPool();
     createCommandBuffer();
+    createSyncObjects(); // <--- ÚJ
 
 
 
@@ -100,10 +101,22 @@ void RetopoApp::mainLoop() {
     //program ablak folyamatos futása a be nem zárásig itt fogjuk pl a frameket rajzolni
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        drawFrame(); // <--- EZT ADD HOZZÁ!
     }
+    // Megvárjuk, amíg a GPU végez, mielőtt bezárjuk a programot
+    vkDeviceWaitIdle(device);
 }
 
 void RetopoApp::cleanup() {
+    // ÚJ: Lámpák törlése (két külön ciklusban a méretek miatt)
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+        vkDestroyFence(device, inFlightFences[i], nullptr);
+    }
+    for (size_t i = 0; i < swapChainImages.size(); i++) {
+        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+    }
+
     // ÚJ: Framebufferek törlése
     for (auto framebuffer : swapChainFramebuffers) {
         vkDestroyFramebuffer(device, framebuffer, nullptr);
@@ -673,21 +686,18 @@ void RetopoApp::createCommandPool() {
 
 // --- ÚJ FÜGGVÉNY: Parancslista (Teherautó) lefoglalása a raktárból ---
 void RetopoApp::createCommandBuffer() {
+    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool; // Ebből a raktárból kérjük
-
-    // PRIMARY = Közvetlenül beküldhető a GPU-nak (SECONDARY az, amit egy másik parancslistából hívunk)
+    allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1; // Egyelőre elég 1 db parancslista
+    allocInfo.commandBufferCount = (uint32_t) commandBuffers.size(); // <--- 2-t kérünk!
 
-    if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Command Buffer-t!");
+    if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Command Buffereket!");
     }
-
-    std::cout << "Command Buffer sikeresen lefoglalva!" << std::endl;
 }
-
 // --- ÚJ FÜGGVÉNY: Parancsok felírása a teherautóra (Recording) ---
 void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
     // 1. Megnyitjuk a füzetet (Kezdődik a felvétel)
@@ -728,4 +738,84 @@ void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
     }
+}
+
+void RetopoApp::createSyncObjects() {
+    imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
+    // ÚJ: A befejezést jelző lámpából annyi kell, ahány vászon van (3)
+    renderFinishedSemaphores.resize(swapChainImages.size());
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    // Ebből a kettőből elég a CPU-GPU szinkronizáláshoz a 2 db
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Hiba: Nem sikerult letrehozni a szinkronizacios objektumokat!");
+            }
+    }
+
+    // Ebből viszont vásznanként kell egy
+    for (size_t i = 0; i < swapChainImages.size(); i++) {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Hiba: Nem sikerult letrehozni a renderFinished semaphoret!");
+        }
+    }
+}
+void RetopoApp::drawFrame() {
+    // 1. Megvárjuk az AKTUÁLIS kerítést
+    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+
+    // 2. Kép kérése az AKTUÁLIS lámpával
+    uint32_t imageIndex;
+    vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+    // 3. Felvétel az AKTUÁLIS teherautóra
+    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+
+    // 4. Beküldés a GPU-nak
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[imageIndex]};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult bekuldeni a rajzolo parancsot!");
+    }
+
+    // 5. Megjelenítés a monitoron
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+
+    VkSwapchainKHR swapChains[] = {swapChain};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &imageIndex;
+
+    vkQueuePresentKHR(presentQueue, &presentInfo);
+
+    // LÉPTETÉS: Ha 0 volt, 1 lesz. Ha 1 volt, 0 lesz.
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }

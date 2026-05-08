@@ -30,6 +30,8 @@ public:
     void run();
 
 private:
+    const int MAX_FRAMES_IN_FLIGHT = 2;
+
     GLFWwindow* window;
 
     //ennek mondom meg az alkalmazés
@@ -54,8 +56,13 @@ private:
     std::vector<VkFramebuffer> swapChainFramebuffers;
     // --- ÚJ VÁLTOZÓK ---
     VkCommandPool commandPool;
-    VkCommandBuffer commandBuffer;
 
+    // --- ÚJ VÁLTOZÓK: A szinkronizációs lámpák ---
+    std::vector<VkCommandBuffer> commandBuffers; // Többes szám!
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
+    uint32_t currentFrame = 0; // Nyilvántartja, melyik "szett" lámpát használjuk épp
 
     VkRenderPass renderPass;
 
@@ -91,6 +98,10 @@ private:
     void createCommandPool();    // <--- ÚJ FÜGGVÉNY
     void createCommandBuffer();  // <--- ÚJ FÜGGVÉNY
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
+    // --- ÚJ FÜGGVÉNYEK ---
+    void createSyncObjects();
+    void drawFrame();
 
     // Segédfüggvények a Swap Chain beállításához:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

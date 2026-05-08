@@ -52,6 +52,19 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 ### 11. Framebufferek (Képkeret-tartályok)
 - Fizikailag összekapcsolják a Swap Chain képeit a Render Pass-szal. Minden egyes képhez létrejön egy saját framebuffer, amely tartályként szolgál a renderelési műveletekhez.
 
+### 12. Szinkronizációs architektúra (Lámpák és Sorompók)
+- **Semaphores (GPU-GPU):** Koordinálják a műveleteket a videókártyán belül. Az `imageAvailableSemaphore` megvárja, amíg a monitor felszabadít egy vásznat, a `renderFinishedSemaphore` pedig jelzi, ha a rajzolás befejeződött.
+- **Fences (CPU-GPU):** Szabályozzák a processzor sebességét. Az `inFlightFence` megakadályozza, hogy a CPU új parancsokat küldjön, amíg a GPU nem végzett az előző képkockával.
+- **Frames in Flight:** A motor egyszerre több (2) képkockát tart a "csőben", így amíg a GPU rajzol, a CPU már előkészítheti a következő parancsokat, maximalizálva a teljesítményt.
+
+### 13. Fő Renderelési Ciklus (Main Loop)
+- A motor folyamatosan ismétli a következő lépéseket:
+    1. Sorompó megvárása (Fence).
+    2. Szabad kép kérése a Swap Chain-től.
+    3. Parancsok rögzítése (Recording).
+    4. Csomag beküldése a GPU-nak (Submit).
+    5. Kész kép visszaküldése a monitornak (Present).
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/
