@@ -4,6 +4,8 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <optional>
+#include <memory>
+#include "Pipeline.h"     
 
 // Ebbe gyüjtjük össze a parancs családokat
 struct QueueFamilyIndices {
@@ -50,8 +52,10 @@ private:
     // ---  VÁLTOZÓ: A képek "lencséi" ---
     std::vector<VkImageView> swapChainImageViews;
 
-    // --- ÚJ VÁLTOZÓ ---
+    // ---  VÁLTOZÓ ---
     VkDebugUtilsMessengerEXT debugMessenger;
+    
+    std::unique_ptr<Pipeline> graphicsPipeline;
 
     void initWindow();
     void initVulkan();
@@ -59,7 +63,7 @@ private:
     void cleanup();
     void createInstance();
 
-    // --- ÚJ FÜGGVÉNYEK ---
+    // ---  FÜGGVÉNYEK ---
     void setupDebugMessenger();
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 

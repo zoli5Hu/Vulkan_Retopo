@@ -64,6 +64,7 @@ endif()
 add_executable(Pro
         main.cpp
         src/RetopoApp.cpp
+        src/Pipeline.cpp
 )
 
 # Ez biztosítja, hogy a shaderek leforduljanak az exe előtt

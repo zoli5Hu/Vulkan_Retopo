@@ -79,6 +79,9 @@ void RetopoApp::initVulkan() {
     createLogicalDevice(); // Létrehozzuk a logikai eszközt
     createSwapChain(); // <---  Swap Chain létrehozása
     createImageViews(); // <--- : Image View-k létrehozása
+
+    // --- ÚJ: Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
+    graphicsPipeline = std::make_unique<Pipeline>(device, "shaders/vert.spv", "shaders/frag.spv");
 }
 
 void RetopoApp::mainLoop() {
@@ -94,6 +97,10 @@ void RetopoApp::cleanup() {
     }
     //  Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
     vkDestroySwapchainKHR(device, swapChain, nullptr);
+
+    // --- ÚJ SOR: Manuálisan megsemmisítjük a futószalagot (és vele a shadereket) ---
+    graphicsPipeline.reset();
+    
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
 
