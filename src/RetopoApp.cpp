@@ -80,6 +80,7 @@ void RetopoApp::initVulkan() {
     createSwapChain(); // <---  Swap Chain létrehozása
     createImageViews(); // <--- : Image View-k létrehozása
     createRenderPass();    // --- : Render Pass létrehozása a Pipeline ELŐTT! ---
+    createFramebuffers(); //a swapchanből kiválasztjuk melyik kép tarája legyen
 
 
     // --- : Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
@@ -94,6 +95,11 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
+    // ÚJ: Framebufferek törlése
+    for (auto framebuffer : swapChainFramebuffers) {
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
+    }
+
     for (auto imageView: swapChainImageViews) {
         vkDestroyImageView(device, imageView, nullptr);
     }
@@ -602,4 +608,32 @@ void RetopoApp::createRenderPass() {
     }
 
     std::cout << "Render Pass sikeresen letrehozva!" << std::endl;
+}
+
+void RetopoApp::createFramebuffers() {
+    // Pontosan annyi tartály kell, ahány képünk van
+    swapChainFramebuffers.resize(swapChainImageViews.size());
+
+    for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+        // Milyen nézeteket (lencséket) akarunk használni ehhez a tartályhoz?
+        // Jelenleg csak egyet: a szín-csatolmányt (color attachment)
+        VkImageView attachments[] = {
+            swapChainImageViews[i]
+        };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass; // Melyik tervrajzhoz (Render Pass) tartozik?
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments; // Mi a fizikai kép, amire rajzolunk?
+        framebufferInfo.width = swapChainExtent.width;
+        framebufferInfo.height = swapChainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Hiba: Nem sikerult letrehozni a Framebuffert!");
+        }
+    }
+
+    std::cout << swapChainFramebuffers.size() << " db Framebuffer sikeresen letrehozva!" << std::endl;
 }

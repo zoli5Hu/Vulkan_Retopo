@@ -51,11 +51,13 @@ private:
 
     // ---  VÁLTOZÓ: A képek "lencséi" ---
     std::vector<VkImageView> swapChainImageViews;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
 
     VkRenderPass renderPass;
 
     VkDebugUtilsMessengerEXT debugMessenger;
     std::unique_ptr<Pipeline> graphicsPipeline;
+
 
     void initWindow();
     void initVulkan();
@@ -80,7 +82,8 @@ private:
 
     void createSwapChain();
     void createImageViews();
-    void createRenderPass(); // <---  FÜGGVÉNY
+    void createRenderPass();
+    void createFramebuffers(); 
 
     // Segédfüggvények a Swap Chain beállításához:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

@@ -46,6 +46,12 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 - **Shader Modulok (`VkShaderModule`):** A beolvasott bináris kódból a rendszer Vulkan shader modulokat épít, amik a grafikus futószalag logikáját adják.
 - **Biztonságos Memóriakezelés:** Az objektum-orientált felépítés (külön `Pipeline` osztály) és a modern C++ okos mutatók (`std::unique_ptr`) garantálják a stabil élettartam-kezelést a Vulkan szigorú megsemmisítési sorrendjéhez igazodva.
 
+### 10. Render Pass (Megjelenítési Terv)
+- Definiálja a rajzolási folyamat szabályait: milyen formátumba rajzolunk, és mit tegyen a GPU a képkeret elején (törlés) és végén (mentés).
+
+### 11. Framebufferek (Képkeret-tartályok)
+- Fizikailag összekapcsolják a Swap Chain képeit a Render Pass-szal. Minden egyes képhez létrejön egy saját framebuffer, amely tartályként szolgál a renderelési műveletekhez.
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/
