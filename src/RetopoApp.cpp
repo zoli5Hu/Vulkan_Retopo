@@ -79,8 +79,10 @@ void RetopoApp::initVulkan() {
     createLogicalDevice(); // Létrehozzuk a logikai eszközt
     createSwapChain(); // <---  Swap Chain létrehozása
     createImageViews(); // <--- : Image View-k létrehozása
+    createRenderPass();    // --- : Render Pass létrehozása a Pipeline ELŐTT! ---
 
-    // --- ÚJ: Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
+
+    // --- : Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
     graphicsPipeline = std::make_unique<Pipeline>(device, "shaders/vert.spv", "shaders/frag.spv");
 }
 
@@ -98,9 +100,12 @@ void RetopoApp::cleanup() {
     //  Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
     vkDestroySwapchainKHR(device, swapChain, nullptr);
 
-    // --- ÚJ SOR: Manuálisan megsemmisítjük a futószalagot (és vele a shadereket) ---
+    // ---  SOR: Manuálisan megsemmisítjük a futószalagot (és vele a shadereket) ---
     graphicsPipeline.reset();
-    
+
+    // --- : Render Pass törlése a Pipeline és a Logikai Eszköz között ---
+    vkDestroyRenderPass(device, renderPass, nullptr);
+
     // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
     vkDestroyDevice(device, nullptr);
 
@@ -178,7 +183,6 @@ void RetopoApp::createInstance() {
 
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
 }
-
 
 // ---  FÜGGVÉNY: Felszín létrehozása ---
 void RetopoApp::createSurface() {
@@ -553,4 +557,49 @@ void RetopoApp::setupDebugMessenger() {
     if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult beallitani a Debug Messengert!");
     }
+}
+
+// ---  FÜGGVÉNY: Render Pass (Rajzolási Fázis) létrehozása ---
+void RetopoApp::createRenderPass() {
+    // 1. A szín-csatolmány (A vásznunk, amire rajzolunk)
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = swapChainImageFormat; // Ugyanaz a formátum, mint a Swap Chain-é
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT; // Nincs élsimítás (Multisampling) egyelőre
+
+    // Mit csináljon a vászonnal rajzolás ELŐTT és UTÁN?
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Törölje tisztára (feketére) a képet kezdéskor!
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Mentse el az eredményt, hogy lássuk a képernyőn!
+
+    // A Stencil (maszkolás) adatokat most nem használjuk
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+    // Milyen állapotban van a kép kezdéskor, és mivé váljon a végén?
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Nem érdekel, mi volt rajta eddig (úgyis töröljük)
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // A végén legyen kész arra, hogy kimenjen a monitorra!
+
+    // 2. Hivatkozás a csatolmányra (A subpass-hoz)
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0; // A 0. indexű csatolmányt használjuk (colorAttachment)
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // A Vulkan optimalizálja színrajzoláshoz
+
+    // 3. Al-fázis (Subpass)
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // Ez egy grafikus (nem pedig compute/számítási) fázis
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    // 4. Maga a Render Pass
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Render Pass-t!");
+    }
+
+    std::cout << "Render Pass sikeresen letrehozva!" << std::endl;
 }
