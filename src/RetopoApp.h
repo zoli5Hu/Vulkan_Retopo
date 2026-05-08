@@ -52,6 +52,10 @@ private:
     // ---  VÁLTOZÓ: A képek "lencséi" ---
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkFramebuffer> swapChainFramebuffers;
+    // --- ÚJ VÁLTOZÓK ---
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffer;
+
 
     VkRenderPass renderPass;
 
@@ -83,7 +87,9 @@ private:
     void createSwapChain();
     void createImageViews();
     void createRenderPass();
-    void createFramebuffers(); 
+    void createFramebuffers();
+    void createCommandPool();    // <--- ÚJ FÜGGVÉNY
+    void createCommandBuffer();  // <--- ÚJ FÜGGVÉNY
 
     // Segédfüggvények a Swap Chain beállításához:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

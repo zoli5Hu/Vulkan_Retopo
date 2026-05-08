@@ -81,6 +81,10 @@ void RetopoApp::initVulkan() {
     createImageViews(); // <--- : Image View-k létrehozása
     createRenderPass();    // --- : Render Pass létrehozása a Pipeline ELŐTT! ---
     createFramebuffers(); //a swapchanből kiválasztjuk melyik kép tarája legyen
+    // --- ÚJ: Parancsraktár és Parancslista létrehozása ---
+    createCommandPool();
+    createCommandBuffer();
+
 
 
     // --- : Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
@@ -108,6 +112,11 @@ void RetopoApp::cleanup() {
     for (auto imageView: swapChainImageViews) {
         vkDestroyImageView(device, imageView, nullptr);
     }
+
+    // --- ÚJ: Command Pool törlése ---
+    // (A benne lévő Command Buffereket automatikusan törli a Vulkan!)
+    vkDestroyCommandPool(device, commandPool, nullptr);
+
     //  Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
     vkDestroySwapchainKHR(device, swapChain, nullptr);
 
@@ -641,4 +650,40 @@ void RetopoApp::createFramebuffers() {
     }
 
     std::cout << swapChainFramebuffers.size() << " db Framebuffer sikeresen letrehozva!" << std::endl;
+}
+
+// --- ÚJ FÜGGVÉNY: Parancsraktár létrehozása ---
+void RetopoApp::createCommandPool() {
+    // A parancsokat egy specifikus futószalagra kell küldeni (Graphics Queue)
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+
+    // Ez a flag engedi, hogy minden képkockánál "újrahasznosítsuk" és újraírjuk a teherautó tartalmát
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+    if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Command Pool-t!");
+    }
+
+    std::cout << "Command Pool sikeresen letrehozva!" << std::endl;
+}
+
+// --- ÚJ FÜGGVÉNY: Parancslista (Teherautó) lefoglalása a raktárból ---
+void RetopoApp::createCommandBuffer() {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool; // Ebből a raktárból kérjük
+
+    // PRIMARY = Közvetlenül beküldhető a GPU-nak (SECONDARY az, amit egy másik parancslistából hívunk)
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1; // Egyelőre elég 1 db parancslista
+
+    if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Command Buffer-t!");
+    }
+
+    std::cout << "Command Buffer sikeresen lefoglalva!" << std::endl;
 }
