@@ -52,6 +52,25 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 ### 11. Framebufferek (Képkeret-tartályok)
 - Fizikailag összekapcsolják a Swap Chain képeit a Render Pass-szal. Minden egyes képhez létrejön egy saját framebuffer, amely tartályként szolgál a renderelési műveletekhez.
 
+### 12. Parancsraktár és Parancslista (Command Pool & Command Buffer)
+- **Command Pool:** Lefoglalja és menedzseli a parancsokhoz szükséges memóriát az adott videókártya futószalaghoz (Graphics Queue).
+- **Command Buffer:** A Vulkan aszinkron működésének lelke. A CPU ide "rögzíti" a rajzolási utasításokat (pl. Pipeline csatlakoztatása, Render Pass indítása, háromszögek rajzolása). A kész listát egyetlen csomagként küldjük be a GPU-nak, így minimalizálva a CPU-GPU kommunikációs szűk keresztmetszetet.
+
+---
+
+## ⚙️ Futtatás és Fejlesztői Környezet (IDE) Beállítása
+
+Mivel a projekt a futtatás során lefordított shader binárisokat (`.spv` fájlokat) olvas be, fontos, hogy a program a megfelelő munkakönyvtárból induljon el.
+
+### CLion beállítása (Windows / macOS)
+A CMake a `cmake-build-debug` mappába generálja az indítható `.exe` / alkalmazás fájlt, de a shaderek a projekt gyökerében lévő `shaders` mappába fordulnak.
+
+1. Nyisd meg a **Run/Debug Configurations** menüt (a zöld Play gomb melletti legördülő menü -> *Edit Configurations...*).
+2. Válaszd ki a **Pro** (Executable) targetet.
+3. Keresd meg a **Working directory** mezőt.
+4. Állítsd át az alapértelmezett `cmake-build-debug` útvonalat a **projekt legfelső, főkönyvtárára** (Ahol a `CMakeLists.txt` és az `src` mappa található).
+5. Mentsd el az OK gombbal. A program így már sikeresen megtalálja a lefordított shadereket.
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/

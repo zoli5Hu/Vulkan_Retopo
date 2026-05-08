@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <set> //  könyvtár a duplikációk elkerüléséhez
+#include <limits>    // <--- ÚJ: Ez kell a numeric_limits-hez
+#include <algorithm> // <--- ÚJ: Ez kell a clamp-hez
 
 //képernyő megadás
 const uint32_t WIDTH = 800;
