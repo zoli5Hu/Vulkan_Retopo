@@ -687,3 +687,45 @@ void RetopoApp::createCommandBuffer() {
 
     std::cout << "Command Buffer sikeresen lefoglalva!" << std::endl;
 }
+
+// --- ÚJ FÜGGVÉNY: Parancsok felírása a teherautóra (Recording) ---
+void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+    // 1. Megnyitjuk a füzetet (Kezdődik a felvétel)
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult elkezdeni a Command Buffer rogziteset!");
+    }
+
+    // 2. Munkalap (Render Pass) beállítása
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass; // Ezt a tervrajzot használjuk
+    // Itt kötjük össze a konkrét vászonnal (tartállyal)!
+    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapChainExtent;
+
+    // A háttérszín, amire töröljük a vásznat (Sötétszürke)
+    VkClearValue clearColor = {{{0.01f, 0.01f, 0.01f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    // ELINDÍTJUK A RENDER PASS-T
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // 3. Rácsatlakoztatjuk a futószalagunkat (A Pipeline-t)
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
+
+    // 4. AZ ÉVSZÁZAD PARANCSA: Rajzold ki a 3 csúcspontot! (1 db objektumként)
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+    // BEFEJEZZÜK A RENDER PASS-T
+    vkCmdEndRenderPass(commandBuffer);
+
+    // 5. Becsukjuk a füzetet (Vége a felvételnek)
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
+    }
+}

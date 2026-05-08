@@ -15,6 +15,9 @@ public:
              VkExtent2D extent);
     ~Pipeline();
 
+    // --- ÚJ SOR: Hogy a RetopoApp el tudja kérni a megépített futószalagot ---
+    VkPipeline getPipeline() const { return graphicsPipeline; }
+
 private:
     VkDevice device;
     VkPipeline graphicsPipeline;
@@ -31,7 +34,7 @@ private:
                                 const std::string& fragFilepath,
                                 VkRenderPass renderPass,
                                 VkExtent2D extent);
-    
+
     // Csomagoló függvény a Vulkan Shader Modulokhoz
     VkShaderModule createShaderModule(const std::vector<char>& code);
 };

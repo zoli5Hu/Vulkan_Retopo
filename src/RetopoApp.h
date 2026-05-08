@@ -90,6 +90,7 @@ private:
     void createFramebuffers();
     void createCommandPool();    // <--- ÚJ FÜGGVÉNY
     void createCommandBuffer();  // <--- ÚJ FÜGGVÉNY
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
     // Segédfüggvények a Swap Chain beállításához:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
