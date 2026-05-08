@@ -73,9 +73,32 @@ add_dependencies(Pro CompileShaders)
 # 4. Hozzácsatolás
 target_include_directories(Pro PRIVATE ${Vulkan_INCLUDE_DIRS})
 
-# Itt egy trükk: ha letöltöttük, akkor 'glfw' a neve, ha találtuk, akkor 'glfw3'
+# ==========================================
+# 5. GOOGLE TEST (UNIT TESZTEK) BEÁLLÍTÁSA
+# ==========================================
+FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG release-1.12.1
+)
+# Ez letölti a GTest könyvtárat a háttérben
+FetchContent_MakeAvailable(googletest)
+
+# Új "program" létrehozása csak a teszteknek
+add_executable(VulkanTests
+        tests/test_main.cpp
+        src/Pipeline.cpp
+        src/RetopoApp.cpp   # <--- Ezt hozzá kell adni!
+)
+
+# Kötések (Include mappák)
+target_include_directories(VulkanTests PRIVATE src ${Vulkan_INCLUDE_DIRS})
+
+# Itt kötjük hozzá a GLFW-t a Pro-hoz ÉS a VulkanTests-hez is!
 if(TARGET glfw)
     target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw)
+    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw) # <--- Ez hiányzott!
 else()
     target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw3)
+    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw3) # <--- Ez is hiányzott!
 endif()
