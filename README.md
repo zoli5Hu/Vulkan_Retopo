@@ -73,6 +73,14 @@ A motor egy teljesen adatvezérelt (data-driven) architektúrát használ a 3D g
 - **Memória Térképezés (Mapping):** A CPU és GPU közötti kommunikáció a `vkMapMemory` használatával történik, amely "Host Visible" és "Host Coherent" memóriablokkokat keres, így biztosítva az azonnali és szinkronizált adatmásolást (Zero-copy jellegű működés).
 - **Dinamikus Tervrajz (Pipeline Input):** A grafikus futószalag (Graphics Pipeline) automatikusan kiolvassa a C++ `Vertex` struktúrából az adatok méretét (Binding Description) és elhelyezkedését (Attribute Descriptions), így a motor könnyedén bővíthető új adatokkal (pl. UV koordináták, normálvektorok) anélkül, hogy a motor alapjait újra kellene írni.
 
+### 15. 3D Tér, Kamera és Uniform Bufferek (MVP)
+A motor a 2D-s síkból átlépett a teljes értékű 3D-s térbe, bevezetve a virtuális kamerát és a valós idejű transzformációkat.
+- **Valódi 3D Koordináták:** A `Vertex` struktúra kibővült a Z (mélység) tengellyel (`glm::vec3`), lehetővé téve a térbeli objektumok ábrázolását.
+- **MVP Mátrixok (Kamera és Vetítés):** A rendszer a standard Model-View-Projection (MVP) mátrix-matematikát használja. A `Model` mátrix a térbeli elhelyezkedésért és forgásért, a `View` a kamera pozíciójáért, a `Projection` pedig a 3D-s tér 2D-s monitorra történő perspektivikus vetítéséért (Raszterizálás) felel.
+- **Uniform Bufferek (UBO):** Az állandó (képkockánként nem, de keretenként változó) adatok, mint a kamera állapota, egy speciális GPU memóriába, a Uniform Bufferbe kerülnek. Ezt a memóriát a CPU folyamatosan nyitva tartja (`vkMapMemory`), hogy másodpercenként 60-szor frissíthesse a forgási és kameraadatokat.
+- **Descriptor Set-ek és Layout-ok:** A Vulkan szigorú architektúrájának megfelelően a C++ memória (UBO) és a Shader (Pipeline) közötti adatcsere dedikált "adathidakon", Descriptor Set-eken keresztül történik, amiket a rajzolás pillanatában kötünk rá a futószalagra (`vkCmdBindDescriptorSets`).
+- **Párhuzamos feldolgozás (Adatkollízió védelem):** A kamera memóriafoglalása képkockánként (Frames in Flight) duplikálva van. Amíg a videókártya (GPU) az egyik memóriablokkból olvassa a kamerát a rajzoláshoz, a processzor (CPU) a másik blokkba már a következő képkocka adatait számolja, elkerülve a képtörést (Screen Tearing) és a szinkronizációs fagyásokat.
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/

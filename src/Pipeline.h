@@ -12,12 +12,14 @@ public:
              const std::string& vertFilepath,
              const std::string& fragFilepath,
              VkRenderPass renderPass,
-             VkExtent2D extent);
+             VkExtent2D extent,
+             VkDescriptorSetLayout descriptorSetLayout);
+
     ~Pipeline();
 
     // --- ÚJ SOR: Hogy a RetopoApp el tudja kérni a megépített futószalagot ---
     VkPipeline getPipeline() const { return graphicsPipeline; }
-
+    VkPipelineLayout getPipelineLayout() const { return pipelineLayout; } // <--- EZT AZ EGY SORT ADD HOZZÁ!
 private:
     VkDevice device;
     VkPipeline graphicsPipeline;
@@ -33,8 +35,12 @@ private:
     void createGraphicsPipeline(const std::string& vertFilepath,
                                 const std::string& fragFilepath,
                                 VkRenderPass renderPass,
-                                VkExtent2D extent);
+                                VkExtent2D extent,
+                                VkDescriptorSetLayout descriptorSetLayout); // <--- EZ HIÁNYZOTT INNEN!
+
 
     // Csomagoló függvény a Vulkan Shader Modulokhoz
     VkShaderModule createShaderModule(const std::vector<char>& code);
+
+
 };

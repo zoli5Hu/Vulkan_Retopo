@@ -1,18 +1,12 @@
 #include "Pipeline.h"
-#include <iostream>
-#include <stdexcept>
-#include <fstream>
 #include "Vertex.h"
-
-#include "Pipeline.h"
-#include "Vertex.h" // Kötelező az új Vertex struktúra miatt!
 #include <iostream>
 #include <stdexcept>
 #include <fstream>
 
-Pipeline::Pipeline(VkDevice device, const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent)
+Pipeline::Pipeline(VkDevice device, const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent, VkDescriptorSetLayout descriptorSetLayout)
     : device(device) {
-    createGraphicsPipeline(vertFilepath, fragFilepath, renderPass, extent);
+    createGraphicsPipeline(vertFilepath, fragFilepath, renderPass, extent, descriptorSetLayout);
 }
 
 Pipeline::~Pipeline() {
@@ -22,7 +16,7 @@ Pipeline::~Pipeline() {
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
 }
 
-void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent) {
+void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent, VkDescriptorSetLayout descriptorSetLayout) {
     auto vertShaderCode = readFile(vertFilepath);
     auto fragShaderCode = readFile(fragFilepath);
 
@@ -44,7 +38,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    // 2. Vertex Input (Most már megmondjuk neki, mit várjon a memóriából!)
+    // 2. Vertex Input
     auto bindingDescription = Vertex::getBindingDescription();
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
@@ -55,12 +49,12 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
-    // 3. Input Assembly (Háromszögeket akarunk)
+    // 3. Input Assembly
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-    // 4. Viewport és Scissor (Hova rajzoljon a képernyőn)
+    // 4. Viewport és Scissor
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -80,20 +74,20 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     viewportState.scissorCount = 1;
     viewportState.pScissors = &scissor;
 
-    // 5. Raszterizáló (Itt dől el a drótváz/teli mód!)
+    // 5. Raszterizáló
     VkPipelineRasterizationStateCreateInfo rasterizer{};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // Teli háromszög
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; // Hátsó lapok eldobása
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
 
-    // 6. Multisampling (Élsimítás kikapcsolva)
+    // 6. Multisampling
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    // 7. Color Blending (Színkeverés/Átlátszóság kikapcsolva)
+    // 7. Color Blending
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
@@ -103,9 +97,11 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &colorBlendAttachment;
 
-    // 8. Pipeline Layout (Később itt adnánk át adatokat a shadernek)
+    // 8. Pipeline Layout (Most már rákötjük a leendő UBO elrendezésünket!)
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
 
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Pipeline Layout letrehozasa sikertelen!");
@@ -123,7 +119,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     pipelineInfo.pMultisampleState = &multisampling;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass; // Itt a kapocs!
+    pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
 
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
@@ -163,4 +159,3 @@ VkShaderModule Pipeline::createShaderModule(const std::vector<char>& code) {
 
     return shaderModule;
 }
-

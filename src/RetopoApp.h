@@ -26,6 +26,15 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
+// --- ÚJ VÁLTOZÓK: A 3D Kamera (Uniform Bufferek) ---
+struct UniformBufferObject {
+    glm::mat4 model; // Forgatás és pozíció
+    glm::mat4 view;  // Kamera nézete
+    glm::mat4 proj;  // Perspektíva
+};
+
+
+
 class RetopoApp {
 public:
     void run();
@@ -34,10 +43,12 @@ private:
     const int MAX_FRAMES_IN_FLIGHT = 2;
     // --- ÚJ: Íme a háromszögünk C++ tömbként! ---
     const std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Felső pont (Piros)
-        {{0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}}, // Jobb alsó (Zöld)
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}  // Bal alsó (Kék)
+        {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Felső pont (X, Y, Z)
+        {{0.5f, 0.5f, 0.0f},  {0.0f, 1.0f, 0.0f}}, // Jobb alsó
+        {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}  // Bal alsó
     };
+
+
 
 
     GLFWwindow* window;
@@ -81,6 +92,15 @@ private:
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
 
+    VkDescriptorSetLayout descriptorSetLayout; // A "leírás", amit átadunk a Pipeline-nak
+    VkDescriptorPool descriptorPool;
+    std::vector<VkDescriptorSet> descriptorSets;
+
+    // Minden képkockának (2 db) saját kamera memóriája lesz, hogy ne akadjanak össze
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    std::vector<void*> uniformBuffersMapped;
+
 
     void initWindow();
     void initVulkan();
@@ -113,6 +133,12 @@ private:
 
     void createSyncObjects();
     void drawFrame();
+
+    void createDescriptorSetLayout();
+    void createUniformBuffers();
+    void createDescriptorPool();
+    void createDescriptorSets();
+    void updateUniformBuffer(uint32_t currentFrame);
 
     void createVertexBuffer();
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);

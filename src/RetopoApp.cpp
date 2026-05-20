@@ -6,6 +6,8 @@
 #include <set> //  könyvtár a duplikációk elkerüléséhez
 #include <limits>    // <--- ÚJ: Ez kell a numeric_limits-hez
 #include <algorithm> // <--- ÚJ: Ez kell a clamp-hez
+#include <glm/gtc/matrix_transform.hpp> // <--- ÚJ: Mátrix forgatások
+#include <chrono>                       // <--- ÚJ: Időmérés a folyamatos forgáshoz
 
 #include "Vertex.h"
 //képernyő megadás
@@ -87,34 +89,49 @@ void RetopoApp::initVulkan() {
     // --- ÚJ: Parancsraktár és Parancslista létrehozása ---
     createCommandPool();
     createCommandBuffer();
-    createSyncObjects(); // <--- ÚJ
-    createVertexBuffer(); //  Itt foglaljuk le a memóriát induláskor.
+createSyncObjects();
+    createVertexBuffer();
 
+    // --- ÚJ: Kamera memóriafoglalása a Pipeline ELŐTT ---
+    createDescriptorSetLayout();
+    createUniformBuffers();
+    createDescriptorPool();
+    createDescriptorSets();
 
-
-    // --- : Létrehozzuk a Pipeline-t és betöltjük a shadereket ---
+    // Most már átadhatjuk a descriptorSetLayout-ot a hiba elkerüléséhez!
     graphicsPipeline = std::make_unique<Pipeline>(
             device,
             "shaders/vert.spv",
             "shaders/frag.spv",
             renderPass,
-            swapChainExtent
-        );}
+            swapChainExtent,
+            descriptorSetLayout // <--- JAVÍTVA!
+        );
+
+
+    }
 
 void RetopoApp::mainLoop() {
     //program ablak folyamatos futása a be nem zárásig itt fogjuk pl a frameket rajzolni
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        drawFrame(); // <--- EZT ADD HOZZÁ!
+        drawFrame(); // <--- folton rajzolja a frameket
     }
     // Megvárjuk, amíg a GPU végez, mielőtt bezárjuk a programot
     vkDeviceWaitIdle(device);
 }
 
 void RetopoApp::cleanup() {
-    // 1. Saját memóriánk (Vertex Buffer) törlése
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
+
+    // --- ÚJ: Kamera memóriájának törlése ---
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+    }
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
     // 2. Szinkronizációs lámpák (Semaphores, Fences) törlése
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -733,6 +750,9 @@ void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
+    // ---> ÚJ: Rákötjük a kamerát (Descriptor Set) a Pipeline-ra! <---
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+
     // Itt a 3-as szám helyett is a C++ tömb méretét kell megadni!
     vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
@@ -780,9 +800,10 @@ void RetopoApp::drawFrame() {
     uint32_t imageIndex;
     vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-    // 3. Felvétel az AKTUÁLIS teherautóra
-    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+    // --- ÚJ: Minden képkockánál kiszámoljuk az új forgást! ---
+    updateUniformBuffer(currentFrame);
+
+    vkResetCommandBuffer(commandBuffers[currentFrame], 0);    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
     // 4. Beküldés a GPU-nak
     VkSubmitInfo submitInfo{};
@@ -873,4 +894,131 @@ void RetopoApp::createVertexBuffer() {
     vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data); // Kinyitjuk a memóriát
     memcpy(data, vertices.data(), (size_t) bufferSize);               // Bemásoljuk a C++ tömböt
     vkUnmapMemory(device, vertexBufferMemory);                        // Bezárjuk a memóriát
+}
+
+// --- ÚJ FÜGGVÉNYEK A 3D KAMERÁHOZ ÉS MÁTRIXOKHOZ ---
+
+void RetopoApp::createDescriptorSetLayout() {
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // Csak a Vertex shader férhet hozzá
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Descriptor Set Layout-ot!");
+    }
+}
+
+void RetopoApp::createUniformBuffers() {
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; // Ez UNIFORM buffer lesz!
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &uniformBuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Hiba: Nem sikerult letrehozni a Uniform Buffert!");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(device, uniformBuffers[i], &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &uniformBuffersMemory[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a Uniform Buffernek!");
+        }
+
+        vkBindBufferMemory(device, uniformBuffers[i], uniformBuffersMemory[i], 0);
+
+        // A memóriát FOLYAMATOSAN nyitva hagyjuk, mert minden másodpercben 60-szor írunk bele
+        vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+    }
+}
+
+void RetopoApp::createDescriptorPool() {
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Descriptor Pool-t!");
+    }
+}
+
+void RetopoApp::createDescriptorSets() {
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+
+    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult lefoglalni a Descriptor Set-eket!");
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+}
+
+void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+    // 1. FORGÁS: Forgassuk folyamatosan a Z tengely körül!
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // 2. KAMERA: (2, 2, 2) pontból nézünk be a (0, 0, 0) origóba. Felfelé irány a Z tengely.
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // 3. PERSPEKTÍVA: 45 fokos látószög
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+
+    // Vulkan Y tengelye lefelé mutat, de a GLM OpenGL-hez készült, ahol felfelé. Meg kell fordítani!
+    ubo.proj[1][1] *= -1;
+
+    // Végül bemásoljuk a friss mátrixokat a memóriába:
+    memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }

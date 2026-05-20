@@ -5,7 +5,7 @@
 #include <array>
 
 struct Vertex {
-    glm::vec2 pos;   // 2D Pozíció (x, y)
+    glm::vec3 pos;   // 3D Pozíció (x, y,z)
     glm::vec3 color; // Szín (r, g, b)
 
     // 1. Megmondja a Vulkannak, mekkora egy darab Vertex csomag a memóriában
@@ -21,13 +21,14 @@ struct Vertex {
     static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
         std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
 
-        // Pozíció azonosítója (Shaderben: layout(location = 0))
+        // Pozíció azonosítója
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        // <--- MÓDOSÍTÁS: R32G32-ből R32G32B32 lett (3 dimenzió)
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
         attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
-        // Szín azonosítója (Shaderben: layout(location = 1))
+        // Szín azonosítója
         attributeDescriptions[1].binding = 0;
         attributeDescriptions[1].location = 1;
         attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
