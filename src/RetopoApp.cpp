@@ -3,13 +3,16 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
-#include <set> //  könyvtár a duplikációk elkerüléséhez
-#include <limits>    // <--- ÚJ: Ez kell a numeric_limits-hez
-#include <algorithm> // <--- ÚJ: Ez kell a clamp-hez
-#include <glm/gtc/matrix_transform.hpp> // <--- ÚJ: Mátrix forgatások
-#include <chrono>                       // <--- ÚJ: Időmérés a folyamatos forgáshoz
+#include <set>
+#include <limits>
+#include <algorithm>
+#include <glm/gtc/matrix_transform.hpp>
+#include <chrono>
 
+#include <tiny_obj_loader.h> // <--- Csak a sima include kell!
+#include <unordered_map>     // <--- És ez
 #include "Vertex.h"
+
 //képernyő megadás
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -90,8 +93,9 @@ void RetopoApp::initVulkan() {
     createCommandPool();
     createCommandBuffer();
 createSyncObjects();
-    createVertexBuffer();
-
+    loadModel();          // <-- 1. Beolvassa a merevlemezről a C++ memóriába
+    createVertexBuffer(); // <-- 2. A C++ pontokat feltölti a videókártyára
+    createIndexBuffer();  // <-- 3. A C++ indexeket feltölti a videókártyára
     // --- ÚJ: Kamera memóriafoglalása a Pipeline ELŐTT ---
     createDescriptorSetLayout();
     createUniformBuffers();
@@ -122,6 +126,9 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
+    // 1. Saját memóriánk törlése
+    vkDestroyBuffer(device, indexBuffer, nullptr);      // <-- ÚJ
+    vkFreeMemory(device, indexBufferMemory, nullptr);   // <-- ÚJ
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
 
@@ -750,14 +757,15 @@ void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
+    // ---> ÚJ: Rákötjük az Index Buffert is! (EZ LEMARADT) <---
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
     // ---> ÚJ: Rákötjük a kamerát (Descriptor Set) a Pipeline-ra! <---
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-    // Itt a 3-as szám helyett is a C++ tömb méretét kell megadni!
-    vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    // ---> MÓDOSÍTÁS: sima Draw helyett DrawIndexed! <---
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     vkCmdEndRenderPass(commandBuffer);
-
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
     }
@@ -896,6 +904,39 @@ void RetopoApp::createVertexBuffer() {
     vkUnmapMemory(device, vertexBufferMemory);                        // Bezárjuk a memóriát
 }
 
+void RetopoApp::createIndexBuffer() {
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // <-- FIGYELEM: INDEX BUFFER!
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni az Index Buffert!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, indexBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni az Index Buffernek!");
+    }
+
+    vkBindBufferMemory(device, indexBuffer, indexBufferMemory, 0);
+
+    void* data;
+    vkMapMemory(device, indexBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, indices.data(), (size_t) bufferSize);
+    vkUnmapMemory(device, indexBufferMemory);
+}
+
 // --- ÚJ FÜGGVÉNYEK A 3D KAMERÁHOZ ÉS MÁTRIXOKHOZ ---
 
 void RetopoApp::createDescriptorSetLayout() {
@@ -1022,3 +1063,44 @@ void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
     // Végül bemásoljuk a friss mátrixokat a memóriába:
     memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }
+
+void RetopoApp::loadModel() {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "modells/kocka.obj")) {
+        throw std::runtime_error(warn + err);
+    }
+
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            Vertex vertex{};
+
+            // 1. Pozíció kiolvasása a nyers OBJ adatokból
+            vertex.pos = {
+                attrib.vertices[3 * index.vertex_index + 0],
+                attrib.vertices[3 * index.vertex_index + 1],
+                attrib.vertices[3 * index.vertex_index + 2]
+            };
+
+            // 2. Szín beállítása (mivel az obj-ben nincs szín, legyen sima fehér)
+            vertex.color = {1.0f, 1.0f, 1.0f};
+
+            // 3. A ZSENIÁLIS TRÜKK: Ha ezt a pontot még nem láttuk, mentsük el!
+            if (uniqueVertices.count(vertex) == 0) {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+
+            // 4. Mentsük el a sorszámot (indexet) a rajzolási listába
+            indices.push_back(uniqueVertices[vertex]);
+        }
+    }
+
+    std::cout << "Modell betoltve: " << vertices.size() << " egyedi pont, " << indices.size() << " index." << std::endl;
+}
+

@@ -58,6 +58,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+# ---> ÚJ: TinyObjLoader betöltése <---
+FetchContent_Declare(
+        tinyobjloader
+        GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
+        GIT_TAG release
+)
+FetchContent_MakeAvailable(tinyobjloader)
+
 # Megpróbáljuk megkeresni a gépen, ha nincs, letöltjük
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
@@ -106,10 +114,10 @@ target_include_directories(VulkanTests PRIVATE src ${Vulkan_INCLUDE_DIRS})
 
 # Itt kötjük hozzá a GLFW-t és a GLM-et a Pro-hoz ÉS a VulkanTests-hez is!
 if(TARGET glfw)
-    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw glm)
-    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw glm)
+    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw glm tinyobjloader)
+    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw glm tinyobjloader)
 else()
-    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw3 glm)
-    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw3 glm)
+    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw3 glm tinyobjloader)
+    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw3 glm tinyobjloader)
 endif()
 

@@ -81,6 +81,13 @@ A motor a 2D-s síkból átlépett a teljes értékű 3D-s térbe, bevezetve a v
 - **Descriptor Set-ek és Layout-ok:** A Vulkan szigorú architektúrájának megfelelően a C++ memória (UBO) és a Shader (Pipeline) közötti adatcsere dedikált "adathidakon", Descriptor Set-eken keresztül történik, amiket a rajzolás pillanatában kötünk rá a futószalagra (`vkCmdBindDescriptorSets`).
 - **Párhuzamos feldolgozás (Adatkollízió védelem):** A kamera memóriafoglalása képkockánként (Frames in Flight) duplikálva van. Amíg a videókártya (GPU) az egyik memóriablokkból olvassa a kamerát a rajzoláshoz, a processzor (CPU) a másik blokkba már a következő képkocka adatait számolja, elkerülve a képtörést (Screen Tearing) és a szinkronizációs fagyásokat.
 
+### 16. Modellbetöltés és Indexelt Geometria
+A motor kilépett a hardkódolt geometriák korlátai közül, lehetővé téve valódi 3D modellek renderelését.
+- **TinyObjLoader Integráció:** A motor képes `Wavefront .obj` formátumú fájlokat beolvasni a merevlemezről. A betöltés során a motor automatikusan kiszűri a duplikált csúcspontokat (Vertex deduplikáció), így optimalizált memóriahasználatot ér el.
+- **Index Buffer (IBO):** Az "összekötési lista" használatával a motor minimalizálja a VRAM-használatot. Nem tároljuk duplán a közös éleket vagy sarkokat, csak az indexeket (sorszámokat) adjuk meg a GPU-nak, így a renderelés sokkal gyorsabb és hatékonyabb.
+- **Dinamikus Adatkezelés:** A `Vertex` struktúra mostantól hash-elhető (a `std::hash` implementálásával), ami lehetővé teszi a bonyolult 3D modellek villámgyors beolvasását és duplikációmentes tárolását egy `std::unordered_map` segítségével.
+- **Modularitás:** A modellbetöltő logikája (`loadModel`) teljesen szét van választva a grafikus futószalag beállításaitól, így a motor könnyen bővíthető további formátumok (pl. `.gltf`, `.fbx`) támogatásával.
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/

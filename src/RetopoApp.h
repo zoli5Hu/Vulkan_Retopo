@@ -8,6 +8,9 @@
 #include "Pipeline.h"
 #include "Vertex.h"
 
+// Ebbe gyüjtjük össze a parancs családokat...
+
+
 // Ebbe gyüjtjük össze a parancs családokat
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -41,12 +44,9 @@ public:
 
 private:
     const int MAX_FRAMES_IN_FLIGHT = 2;
-    // --- ÚJ: Íme a háromszögünk C++ tömbként! ---
-    const std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Felső pont (X, Y, Z)
-        {{0.5f, 0.5f, 0.0f},  {0.0f, 1.0f, 0.0f}}, // Jobb alsó
-        {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}  // Bal alsó
-    };
+    // A régi hardkódolt tömb helyett most üres vektorok várják az obj fájl adatait:
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices; // <-- ÚJ: Az Index lista (összeköttetések)
 
 
 
@@ -91,6 +91,8 @@ private:
     // --- ÚJ VÁLTOZÓK: Vertex Buffer (GPU Memória) ---
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;             // <-- ÚJ
+    VkDeviceMemory indexBufferMemory; // <-- ÚJ
 
     VkDescriptorSetLayout descriptorSetLayout; // A "leírás", amit átadunk a Pipeline-nak
     VkDescriptorPool descriptorPool;
@@ -139,6 +141,9 @@ private:
     void createDescriptorPool();
     void createDescriptorSets();
     void updateUniformBuffer(uint32_t currentFrame);
+
+    void loadModel();                 // <-- ÚJ
+    void createIndexBuffer();         // <-- ÚJ
 
     void createVertexBuffer();
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
