@@ -5,7 +5,8 @@
 #include <vector>
 #include <optional>
 #include <memory>
-#include "Pipeline.h"     
+#include "Pipeline.h"
+#include "Vertex.h"
 
 // Ebbe gyüjtjük össze a parancs családokat
 struct QueueFamilyIndices {
@@ -31,6 +32,13 @@ public:
 
 private:
     const int MAX_FRAMES_IN_FLIGHT = 2;
+    // --- ÚJ: Íme a háromszögünk C++ tömbként! ---
+    const std::vector<Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Felső pont (Piros)
+        {{0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}}, // Jobb alsó (Zöld)
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}  // Bal alsó (Kék)
+    };
+
 
     GLFWwindow* window;
 
@@ -69,6 +77,10 @@ private:
     VkDebugUtilsMessengerEXT debugMessenger;
     std::unique_ptr<Pipeline> graphicsPipeline;
 
+    // --- ÚJ VÁLTOZÓK: Vertex Buffer (GPU Memória) ---
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+
 
     void initWindow();
     void initVulkan();
@@ -99,9 +111,11 @@ private:
     void createCommandBuffer();  // <--- ÚJ FÜGGVÉNY
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
-    // --- ÚJ FÜGGVÉNYEK ---
     void createSyncObjects();
     void drawFrame();
+
+    void createVertexBuffer();
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
     // Segédfüggvények a Swap Chain beállításához:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

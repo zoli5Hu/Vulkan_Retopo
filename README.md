@@ -65,6 +65,14 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
     4. Csomag beküldése a GPU-nak (Submit).
     5. Kész kép visszaküldése a monitornak (Present).
 
+
+### 14. Adatstruktúrák és Memóriakezelés (Vertex Buffers)
+A motor egy teljesen adatvezérelt (data-driven) architektúrát használ a 3D geometria kezelésére, kiiktatva a hardkódolt shader adatokat.
+- **GLM Integráció:** A csúcspontok (Vertexek) matematikai reprezentációja a `GLM` (OpenGL Mathematics) könyvtárra épül, amely biztosítja a gyors és szabványos 2D/3D vektoros műveleteket (`glm::vec2`, `glm::vec3`).
+- **Dedikált GPU Memória (VRAM):** A modell adatait a rendszer a C++ memóriából (RAM) a videókártya saját, hipergyors memóriájába (VRAM) mozgatja át egy `VkBuffer` objektum segítségével.
+- **Memória Térképezés (Mapping):** A CPU és GPU közötti kommunikáció a `vkMapMemory` használatával történik, amely "Host Visible" és "Host Coherent" memóriablokkokat keres, így biztosítva az azonnali és szinkronizált adatmásolást (Zero-copy jellegű működés).
+- **Dinamikus Tervrajz (Pipeline Input):** A grafikus futószalag (Graphics Pipeline) automatikusan kiolvassa a C++ `Vertex` struktúrából az adatok méretét (Binding Description) és elhelyezkedését (Attribute Descriptions), így a motor könnyedén bővíthető új adatokkal (pl. UV koordináták, normálvektorok) anélkül, hogy a motor alapjait újra kellene írni.
+
 ## 📁 Projekt Struktúra
 ```text
 Vulkan_Retopo/
@@ -76,4 +84,5 @@ Vulkan_Retopo/
  │    └── shader.frag    # Fragment shader
  └── src/                # Forráskód
       ├── RetopoApp.h/cpp # Fő Vulkan motor és ablakkezelés
-      └── Pipeline.h/cpp  # Grafikus futószalag és shader betöltés
+      ├── Pipeline.h/cpp  # Grafikus futószalag és shader betöltés
+      └── Vertex.h        # C++ csúcspont struktúra és GLM matematika

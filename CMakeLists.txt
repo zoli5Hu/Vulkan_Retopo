@@ -50,6 +50,14 @@ FetchContent_Declare(
         GIT_TAG 3.4
 )
 
+# --- GLM (3D Matematika könyvtár) ---
+FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG master
+)
+FetchContent_MakeAvailable(glm)
+
 # Megpróbáljuk megkeresni a gépen, ha nincs, letöltjük
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
@@ -64,9 +72,11 @@ endif()
 add_executable(Pro
         main.cpp
         src/RetopoApp.cpp
+        src/RetopoApp.h
         src/Pipeline.cpp
+        src/Pipeline.h
+        src/Vertex.h
 )
-
 # Ez biztosítja, hogy a shaderek leforduljanak az exe előtt
 add_dependencies(Pro CompileShaders)
 
@@ -94,11 +104,12 @@ add_executable(VulkanTests
 # Kötések (Include mappák)
 target_include_directories(VulkanTests PRIVATE src ${Vulkan_INCLUDE_DIRS})
 
-# Itt kötjük hozzá a GLFW-t a Pro-hoz ÉS a VulkanTests-hez is!
+# Itt kötjük hozzá a GLFW-t és a GLM-et a Pro-hoz ÉS a VulkanTests-hez is!
 if(TARGET glfw)
-    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw)
-    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw) # <--- Ez hiányzott!
+    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw glm)
+    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw glm)
 else()
-    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw3)
-    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw3) # <--- Ez is hiányzott!
+    target_link_libraries(Pro ${Vulkan_LIBRARIES} glfw3 glm)
+    target_link_libraries(VulkanTests gtest_main ${Vulkan_LIBRARIES} glfw3 glm)
 endif()
+

@@ -7,6 +7,7 @@
 #include <limits>    // <--- ÚJ: Ez kell a numeric_limits-hez
 #include <algorithm> // <--- ÚJ: Ez kell a clamp-hez
 
+#include "Vertex.h"
 //képernyő megadás
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -87,6 +88,7 @@ void RetopoApp::initVulkan() {
     createCommandPool();
     createCommandBuffer();
     createSyncObjects(); // <--- ÚJ
+    createVertexBuffer(); //  Itt foglaljuk le a memóriát induláskor.
 
 
 
@@ -110,7 +112,11 @@ void RetopoApp::mainLoop() {
 }
 
 void RetopoApp::cleanup() {
-    // ÚJ: Lámpák törlése (két külön ciklusban a méretek miatt)
+    // 1. Saját memóriánk (Vertex Buffer) törlése
+    vkDestroyBuffer(device, vertexBuffer, nullptr);
+    vkFreeMemory(device, vertexBufferMemory, nullptr);
+
+    // 2. Szinkronizációs lámpák (Semaphores, Fences) törlése
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
         vkDestroyFence(device, inFlightFences[i], nullptr);
@@ -119,42 +125,40 @@ void RetopoApp::cleanup() {
         vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
     }
 
-    // ÚJ: Framebufferek törlése
+    // 3. Parancsraktár (Command Pool) törlése
+    vkDestroyCommandPool(device, commandPool, nullptr);
+
+    // 4. Vászon tartályok (Framebufferek) törlése
     for (auto framebuffer : swapChainFramebuffers) {
         vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
 
-    for (auto imageView: swapChainImageViews) {
-        vkDestroyImageView(device, imageView, nullptr);
-    }
-
-    // --- ÚJ: Command Pool törlése ---
-    // (A benne lévő Command Buffereket automatikusan törli a Vulkan!)
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    //  Swap Chain törlése (először ezt töröljük, mielőtt a logikai eszközt kinyírjuk)
-    vkDestroySwapchainKHR(device, swapChain, nullptr);
-
-    // ---  SOR: Manuálisan megsemmisítjük a futószalagot (és vele a shadereket) ---
+    // 5. Tervrajz (Pipeline) és Render Pass törlése
     graphicsPipeline.reset();
-
-    // --- : Render Pass törlése a Pipeline és a Logikai Eszköz között ---
     vkDestroyRenderPass(device, renderPass, nullptr);
 
-    // Logikai eszköz törlése (először ezt töröljük, mert ez függ az instance-tól)
+    // 6. Lencsék (ImageViews) és Csere-lánc (Swap Chain) törlése
+    for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapChain, nullptr);
+
+    // 7. A hardveres kapcsolat (Logical Device) bontása
     vkDestroyDevice(device, nullptr);
 
-    // : Debug Messenger megsemmisítése
+    // 8. Debugger kikapcsolása
     if (enableValidationLayers) {
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
     }
 
-    vkDestroySurfaceKHR(instance, surface, nullptr); // Felszín törlése
+    // 9. Ablak felszín és Vulkan Instance törlése
+    vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
+
+    // 10. Ablak bezárása
     glfwDestroyWindow(window);
     glfwTerminate();
 }
-
 void RetopoApp::createInstance() {
     //ha debug modban vagyunk
     if (enableValidationLayers) {
@@ -702,7 +706,6 @@ void RetopoApp::createCommandBuffer() {
 }
 // --- ÚJ FÜGGVÉNY: Parancsok felírása a teherautóra (Recording) ---
 void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-    // 1. Megnyitjuk a füzetet (Kezdődik a felvétel)
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -710,38 +713,35 @@ void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
         throw std::runtime_error("Hiba: Nem sikerult elkezdeni a Command Buffer rogziteset!");
     }
 
-    // 2. Munkalap (Render Pass) beállítása
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass; // Ezt a tervrajzot használjuk
-    // Itt kötjük össze a konkrét vászonnal (tartállyal)!
+    renderPassInfo.renderPass = renderPass;
     renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapChainExtent;
 
-    // A háttérszín, amire töröljük a vásznat (Sötétszürke)
     VkClearValue clearColor = {{{0.01f, 0.01f, 0.01f, 1.0f}}};
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
 
-    // ELINDÍTJUK A RENDER PASS-T
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    // 3. Rácsatlakoztatjuk a futószalagunkat (A Pipeline-t)
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
 
-    // 4. AZ ÉVSZÁZAD PARANCSA: Rajzold ki a 3 csúcspontot! (1 db objektumként)
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    //  Rákötjük a Vertex Buffert a rajzolás előtt!
+    VkBuffer vertexBuffers[] = {vertexBuffer};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-    // BEFEJEZZÜK A RENDER PASS-T
+    // Itt a 3-as szám helyett is a C++ tömb méretét kell megadni!
+    vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+
     vkCmdEndRenderPass(commandBuffer);
 
-    // 5. Becsukjuk a füzetet (Vége a felvételnek)
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
     }
 }
-
 void RetopoApp::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -820,4 +820,57 @@ void RetopoApp::drawFrame() {
 
     // LÉPTETÉS: Ha 0 volt, 1 lesz. Ha 1 volt, 0 lesz.
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+// Segédfüggvény: Megkeresi a videókártyán a megfelelő típusú memóriablokkot
+uint32_t RetopoApp::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    throw std::runtime_error("Hiba: Nem talalhato megfelelo tipusu memoria a GPU-n!");
+}
+
+// Fő függvény: Létrehozza a tárolót és átmásolja a pontokat
+void RetopoApp::createVertexBuffer() {
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+    // 1. Létrehozzuk magát a "Tároló" objektumot
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; // Ez egy Vertex Buffer lesz
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a Vertex Buffert!");
+    }
+
+    // 2. Megkérdezzük a Vulkant, mennyi és milyen memóriára van szüksége ennek a tárolónak
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+
+    // 3. Lefoglaljuk a fizikai memóriát (VRAM)
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    // Olyan memóriát kérünk, amit a C++ (CPU) is lát, és azonnal szinkronizálódik
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a Vertex Buffernek!");
+    }
+
+    // 4. Összekötjük a tárolót a lefoglalt memóriával
+    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+
+    // 5. AZ ADATOK ÁTMÁSOLÁSA (C++ -> GPU)
+    void* data;
+    vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &data); // Kinyitjuk a memóriát
+    memcpy(data, vertices.data(), (size_t) bufferSize);               // Bemásoljuk a C++ tömböt
+    vkUnmapMemory(device, vertexBufferMemory);                        // Bezárjuk a memóriát
 }

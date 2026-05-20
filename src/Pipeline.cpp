@@ -2,6 +2,13 @@
 #include <iostream>
 #include <stdexcept>
 #include <fstream>
+#include "Vertex.h"
+
+#include "Pipeline.h"
+#include "Vertex.h" // Kötelező az új Vertex struktúra miatt!
+#include <iostream>
+#include <stdexcept>
+#include <fstream>
 
 Pipeline::Pipeline(VkDevice device, const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent)
     : device(device) {
@@ -14,8 +21,6 @@ Pipeline::~Pipeline() {
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
 }
-
-// ... a readFile és a createShaderModule marad a régiben ...
 
 void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent) {
     auto vertShaderCode = readFile(vertFilepath);
@@ -39,9 +44,16 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    // 2. Vertex Input (Most üres, mert a shaderben van a háromszög)
+    // 2. Vertex Input (Most már megmondjuk neki, mit várjon a memóriából!)
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     // 3. Input Assembly (Háromszögeket akarunk)
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -151,3 +163,4 @@ VkShaderModule Pipeline::createShaderModule(const std::vector<char>& code) {
 
     return shaderModule;
 }
+

@@ -44,3 +44,21 @@ TEST(RetopoAppTest, AppCanBeInstantiated) {
         RetopoApp app;
     });
 }
+
+// =================================================================
+// 4. LOGIKAI TESZTEK (Unit Tests)
+// =================================================================
+TEST(QueueFamilyTest, IsCompleteLogicChecks) {
+    QueueFamilyIndices indices;
+
+    // 1. Üresen nem lehet teljes
+    EXPECT_FALSE(indices.isComplete());
+
+    // 2. Csak grafikus sorral még nem teljes
+    indices.graphicsFamily = 0;
+    EXPECT_FALSE(indices.isComplete());
+
+    // 3. Ha mindkettő megvan, akkor teljesnek kell lennie
+    indices.presentFamily = 1;
+    EXPECT_TRUE(indices.isComplete());
+}
