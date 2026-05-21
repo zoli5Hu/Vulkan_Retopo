@@ -84,6 +84,12 @@ add_executable(Pro
         src/Pipeline.cpp
         src/Pipeline.h
         src/Vertex.h
+        src/VulkanContext.cpp # <--- ÚJ
+        src/VulkanContext.h   # <--- ÚJ
+        src/Renderer.cpp      # <--- ÚJ
+        src/Renderer.h        # <--- ÚJ
+        src/ResourceManager.cpp # <--- ÚJ
+        src/ResourceManager.h   # <--- ÚJ
 )
 # Ez biztosítja, hogy a shaderek leforduljanak az exe előtt
 add_dependencies(Pro CompileShaders)
@@ -107,6 +113,9 @@ add_executable(VulkanTests
         tests/test_main.cpp
         src/Pipeline.cpp
         src/RetopoApp.cpp   # <--- Ezt hozzá kell adni!
+        src/VulkanContext.cpp # <--- Add hozzá ezeket is!
+        src/Renderer.cpp
+        src/ResourceManager.cpp
 )
 
 # Kötések (Include mappák)
