@@ -88,6 +88,8 @@ void RetopoApp::initVulkan() {
     createSwapChain(); // <---  Swap Chain létrehozása
     createImageViews(); // <--- : Image View-k létrehozása
     createRenderPass();    // --- : Render Pass létrehozása a Pipeline ELŐTT! ---
+    createDepthResources(); // <--- ÚJ: Hozzuk létre a láthatatlan mélység-képet!
+
     createFramebuffers(); //a swapchanből kiválasztjuk melyik kép tarája legyen
     // --- ÚJ: Parancsraktár és Parancslista létrehozása ---
     createCommandPool();
@@ -151,6 +153,11 @@ void RetopoApp::cleanup() {
 
     // 3. Parancsraktár (Command Pool) törlése
     vkDestroyCommandPool(device, commandPool, nullptr);
+
+    // --- ÚJ: Töröljük a mélység-tárolót is bezáráskor! ---
+    vkDestroyImageView(device, depthImageView, nullptr);
+    vkDestroyImage(device, depthImage, nullptr);
+    vkFreeMemory(device, depthImageMemory, nullptr);
 
     // 4. Vászon tartályok (Framebufferek) törlése
     for (auto framebuffer : swapChainFramebuffers) {
@@ -561,43 +568,13 @@ void RetopoApp::createSwapChain() {
 // ---  FÜGGVÉNY: Image View-k (Nézetek) létrehozása ---
 //ez felel azért hogy a swapchan képeihez hozzáférjünk
 void RetopoApp::createImageViews() {
-    // Pontosan annyi nézet kell, ahány képünk van a láncban
     swapChainImageViews.resize(swapChainImages.size());
 
     for (size_t i = 0; i < swapChainImages.size(); i++) {
-        VkImageViewCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.image = swapChainImages[i];
-
-        // 1. Milyen típusú a kép? (1D, 2D, 3D, esetleg kocka-textúra)
-        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-
-        // 2. Milyen a színformátuma? (A Swap Chain-től örököljük)
-        createInfo.format = swapChainImageFormat;
-
-        // 3. A színcsatornák "keverése" (Swizzle)
-        // Az IDENTITY azt jelenti, hogy nem keverjük fel a csatornákat, a Piros marad Piros, stb.
-        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-
-        // 4. Melyik részét akarjuk látni a képnek?
-        // Mi most egy szimpla szín-képet akarunk (COLOR_BIT), mipmapok (kicsinyített másolatok) és extra rétegek nélkül.
-        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        createInfo.subresourceRange.baseMipLevel = 0;
-        createInfo.subresourceRange.levelCount = 1;
-        createInfo.subresourceRange.baseArrayLayer = 0;
-        createInfo.subresourceRange.layerCount = 1;
-
-        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
-            throw std::runtime_error("Hiba: Nem sikerult letrehozni az Image View-t a kephez!");
-        }
+        // Használjuk az új, okos segédfüggvényünket!
+        swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
-
-    std::cout << swapChainImageViews.size() << " db Image View sikeresen letrehozva!" << std::endl;
 }
-
 // ---  FÜGGVÉNYEK: Debug Messenger beállítása ---
 void RetopoApp::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
     createInfo = {};
@@ -624,39 +601,50 @@ void RetopoApp::setupDebugMessenger() {
 
 // ---  FÜGGVÉNY: Render Pass (Rajzolási Fázis) létrehozása ---
 void RetopoApp::createRenderPass() {
-    // 1. A szín-csatolmány (A vásznunk, amire rajzolunk)
+    // 1. A szín-csatolmány (Marad, ami volt)
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = swapChainImageFormat; // Ugyanaz a formátum, mint a Swap Chain-é
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT; // Nincs élsimítás (Multisampling) egyelőre
-
-    // Mit csináljon a vászonnal rajzolás ELŐTT és UTÁN?
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Törölje tisztára (feketére) a képet kezdéskor!
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Mentse el az eredményt, hogy lássuk a képernyőn!
-
-    // A Stencil (maszkolás) adatokat most nem használjuk
+    colorAttachment.format = swapChainImageFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    // Milyen állapotban van a kép kezdéskor, és mivé váljon a végén?
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Nem érdekel, mi volt rajta eddig (úgyis töröljük)
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // A végén legyen kész arra, hogy kimenjen a monitorra!
+    // ---> ÚJ: 2. A Mélység-csatolmány (Z-Buffer) <---
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = findDepthFormat();
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Minden képnél töröljük a mélységet is!
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // A rajzolás után nem kell elmenteni a memóriában
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    // 2. Hivatkozás a csatolmányra (A subpass-hoz)
     VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0; // A 0. indexű csatolmányt használjuk (colorAttachment)
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // A Vulkan optimalizálja színrajzoláshoz
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    // 3. Al-fázis (Subpass)
+    // ---> ÚJ: Hivatkozás a Mélység-csatolmányra <---
+    VkAttachmentReference depthAttachmentRef{};
+    depthAttachmentRef.attachment = 1; // A 1-es index (a color a 0-s)
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    // 3. Al-fázis (Subpass) bekötése
     VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // Ez egy grafikus (nem pedig compute/számítási) fázis
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pDepthStencilAttachment = &depthAttachmentRef; // <--- ÚJ BEKÖTÉS
 
-    // 4. Maga a Render Pass
+    // 4. Maga a Render Pass (Most már 2 csatolmánnyal!)
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
 
@@ -666,23 +654,22 @@ void RetopoApp::createRenderPass() {
 
     std::cout << "Render Pass sikeresen letrehozva!" << std::endl;
 }
-
 void RetopoApp::createFramebuffers() {
     // Pontosan annyi tartály kell, ahány képünk van
     swapChainFramebuffers.resize(swapChainImageViews.size());
 
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-        // Milyen nézeteket (lencséket) akarunk használni ehhez a tartályhoz?
-        // Jelenleg csak egyet: a szín-csatolmányt (color attachment)
-        VkImageView attachments[] = {
-            swapChainImageViews[i]
+        // ---> ÚJ: Most már két lencsét (szín és mélység) adunk a tartályhoz! <---
+        std::array<VkImageView, 2> attachments = {
+            swapChainImageViews[i],
+            depthImageView
         };
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = renderPass; // Melyik tervrajzhoz (Render Pass) tartozik?
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments; // Mi a fizikai kép, amire rajzolunk?
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size()); // <--- MÓDOSÍTVA
+        framebufferInfo.pAttachments = attachments.data();                           // <--- MÓDOSÍTVA
         framebufferInfo.width = swapChainExtent.width;
         framebufferInfo.height = swapChainExtent.height;
         framebufferInfo.layers = 1;
@@ -691,7 +678,6 @@ void RetopoApp::createFramebuffers() {
             throw std::runtime_error("Hiba: Nem sikerult letrehozni a Framebuffert!");
         }
     }
-
     std::cout << swapChainFramebuffers.size() << " db Framebuffer sikeresen letrehozva!" << std::endl;
 }
 
@@ -744,9 +730,13 @@ void RetopoApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapChainExtent;
 
-    VkClearValue clearColor = {{{0.01f, 0.01f, 0.01f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    // ---> ÚJ: Két törlési parancs (Szín és Mélység) <---
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = {{0.01f, 0.01f, 0.01f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
+
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1088,8 +1078,11 @@ void RetopoApp::loadModel() {
             };
 
             // 2. Szín beállítása (mivel az obj-ben nincs szín, legyen sima fehér)
-            vertex.color = {1.0f, 1.0f, 1.0f};
-
+            vertex.color = {
+                std::max(0.0f, vertex.pos.x + 0.5f),
+                std::max(0.0f, vertex.pos.y + 0.5f),
+                std::max(0.0f, vertex.pos.z + 0.5f)
+            };
             // 3. A ZSENIÁLIS TRÜKK: Ha ezt a pontot még nem láttuk, mentsük el!
             if (uniqueVertices.count(vertex) == 0) {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
@@ -1102,5 +1095,94 @@ void RetopoApp::loadModel() {
     }
 
     std::cout << "Modell betoltve: " << vertices.size() << " egyedi pont, " << indices.size() << " index." << std::endl;
+}
+
+// --- MÉLYSÉG-TÁROLÓ (Z-BUFFER) SEGÉDFÜGGVÉNYEI ---
+
+// 1. Megkeresi a kártyán a legjobb fekete-fehér mélység-formátumot
+VkFormat RetopoApp::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+            return format;
+        } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+            return format;
+        }
+    }
+    throw std::runtime_error("Hiba: Nem talalhato tamogatott formatum a kártyan!");
+}
+
+VkFormat RetopoApp::findDepthFormat() {
+    return findSupportedFormat(
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+}
+
+// 2. Egy általános függvény, ami létrehoz egy nyers Képet (Image) a GPU-n
+void RetopoApp::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = width;
+    imageInfo.extent.height = height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = format;
+    imageInfo.tiling = tiling;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = usage;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni a kepet!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(device, image, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a kepnek!");
+    }
+
+    vkBindImageMemory(device, image, imageMemory, 0);
+}
+
+// 3. Egy általános lencse-készítő (ImageView) a fenti képhez
+VkImageView RetopoApp::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = aspectFlags;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VkImageView imageView;
+    if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni az Image View-t!");
+    }
+    return imageView;
+}
+
+// 4. A konkrét függvény, ami legyártja a Z-Buffert az ablak méretében
+void RetopoApp::createDepthResources() {
+    VkFormat depthFormat = findDepthFormat();
+
+    createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
+
+    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 

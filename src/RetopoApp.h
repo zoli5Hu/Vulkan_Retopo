@@ -73,6 +73,12 @@ private:
     // ---  VÁLTOZÓ: A képek "lencséi" ---
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkFramebuffer> swapChainFramebuffers;
+
+    // --- ÚJ VÁLTOZÓK: Mélység-tároló (Z-Buffer) ---
+    VkImage depthImage;
+    VkDeviceMemory depthImageMemory;
+    VkImageView depthImageView;
+
     // --- ÚJ VÁLTOZÓK ---
     VkCommandPool commandPool;
 
@@ -142,8 +148,15 @@ private:
     void createDescriptorSets();
     void updateUniformBuffer(uint32_t currentFrame);
 
-    void loadModel();                 // <-- ÚJ
-    void createIndexBuffer();         // <-- ÚJ
+    // --- ÚJ FÜGGVÉNYEK: Mélység-tárolóhoz és képalkotáshoz ---
+    void createDepthResources();
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    VkFormat findDepthFormat();
+    void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags); // Egy általánosított ImageView készítő
+
+    void loadModel();
+    void createIndexBuffer();
 
     void createVertexBuffer();
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);

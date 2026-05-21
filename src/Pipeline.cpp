@@ -97,6 +97,15 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &colorBlendAttachment;
 
+    // 7.5 ---> ÚJ: Mélységteszt (Z-Buffer) beállítása <---
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;           // Vizsgálja a mélységet? IGEN!
+    depthStencil.depthWriteEnable = VK_TRUE;          // Írjon a mélység-tárolóba új adatot? IGEN!
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS; // Akkor rajzoljon, ha KISEBB a távolság (közelebb van a kamerához)
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
     // 8. Pipeline Layout (Most már rákötjük a leendő UBO elrendezésünket!)
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -117,6 +126,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil; // <--- ÚJ: BEKÖTJÜK A PIPELINE-BA!
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = renderPass;
