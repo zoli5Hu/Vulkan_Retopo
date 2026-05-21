@@ -28,7 +28,8 @@ TEST(PipelineTest, ThrowsErrorOnMissingShaderFile) {
                              "shaders/nem_letezo_vert.spv",
                              "shaders/nem_letezo_frag.spv",
                              VK_NULL_HANDLE,
-                             dummyExtent);
+                             dummyExtent,
+                             VK_NULL_HANDLE); // <--- EZ HIÁNYZOTT (A 6. paraméter)
     }, std::runtime_error);
 }
 
