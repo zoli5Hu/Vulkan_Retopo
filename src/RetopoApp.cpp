@@ -4,16 +4,22 @@
 #include <chrono>
 #include <glm/gtc/matrix_transform.hpp>
 
+//képernyő adatainak inicializálása
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
 void RetopoApp::run() {
+    //ablakot indító
     initWindow();
+    //vulkannal való kommunikációt indítő
     initVulkan();
+    //frissítő
     mainLoop();
+    //memória fleszabadítás
     cleanup();
 }
 
+//ablak létrehozása
 void RetopoApp::initWindow() {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -51,12 +57,13 @@ void RetopoApp::initVulkan() {
             vulkanContext->device,
             "shaders/vert.spv",
             "shaders/frag.spv",
-            renderer->getRenderPass(),      // <--- Már a Renderertől kérjük el!
+            renderer->getRenderPass(),
             vulkanContext->swapChainExtent,
             descriptorSetLayout
         );
 }
 
+//updater amíg be nem csukjuk
 void RetopoApp::mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -67,11 +74,12 @@ void RetopoApp::mainLoop() {
         // 2. Szólunk a Renderernek, hogy rajzolja ki a kockát
         renderer->drawFrame(graphicsPipeline.get(), vertexBuffer, indexBuffer, static_cast<uint32_t>(indices.size()), descriptorSets[renderer->getCurrentFrame()]);
     }
+    //megvárja a semaphorokat
     vkDeviceWaitIdle(vulkanContext->device);
 }
 
 void RetopoApp::cleanup() {
-    // Kártya leállítása, mielőtt törlünk
+    // semaphores leállítása, mielőtt törlünk
     vkDeviceWaitIdle(vulkanContext->device);
 
     // 1. Birtokolt memóriánk törlése
@@ -80,13 +88,15 @@ void RetopoApp::cleanup() {
     vkDestroyBuffer(vulkanContext->device, vertexBuffer, nullptr);
     vkFreeMemory(vulkanContext->device, vertexBufferMemory, nullptr);
 
+    //processzor és videókártya kzött kapcsolat felszabdítása
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroyBuffer(vulkanContext->device, uniformBuffers[i], nullptr);
         vkFreeMemory(vulkanContext->device, uniformBuffersMemory[i], nullptr);
     }
+    //shader kapcsolódások törlése
     vkDestroyDescriptorPool(vulkanContext->device, descriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(vulkanContext->device, descriptorSetLayout, nullptr);
-
+    //kép tulajdonságainak fleszabadítása
     vkDestroyImageView(vulkanContext->device, depthImageView, nullptr);
     vkDestroyImage(vulkanContext->device, depthImage, nullptr);
     vkFreeMemory(vulkanContext->device, depthImageMemory, nullptr);

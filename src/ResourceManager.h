@@ -25,7 +25,6 @@ public:
     void createDepthResources(VkExtent2D extent, VkFormat depthFormat, VkImage &depthImage,
                               VkDeviceMemory &depthImageMemory, VkImageView &depthImageView);
 
-    // ---> EZ A KÉT SOR MARADT LE KORÁBBAN: <---
     VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling,
                                  VkFormatFeatureFlags features);
 
