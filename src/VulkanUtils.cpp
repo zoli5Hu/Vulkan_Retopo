@@ -1,5 +1,6 @@
 #include "VulkanUtils.h"
 
+//lecse elkészítése ami keresztül látjuk a képet dinamikus létrehozása
 VkImageView VulkanUtils::createImageView(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -19,6 +20,7 @@ VkImageView VulkanUtils::createImageView(VkDevice device, VkImage image, VkForma
     return imageView;
 }
 
+//megkeresi a megfelelő memória fajtát
 uint32_t VulkanUtils::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -31,6 +33,7 @@ uint32_t VulkanUtils::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t t
     throw std::runtime_error("Hiba: Nem talalhato megfelelo tipusu memoria a GPU-n!");
 }
 
+//dinamikus képlétrehozó
 void VulkanUtils::createImage(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -51,6 +54,7 @@ void VulkanUtils::createImage(VkDevice device, VkPhysicalDevice physicalDevice, 
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a kepet!");
     }
 
+    //szükséges memória megkérdezése
     VkMemoryRequirements memRequirements;
     vkGetImageMemoryRequirements(device, image, &memRequirements);
 
@@ -62,10 +66,11 @@ void VulkanUtils::createImage(VkDevice device, VkPhysicalDevice physicalDevice, 
     if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a kepnek!");
     }
-
+    //A logikai kép objektum összekötése a lefoglalt fizikai memóriával (VRAM)
     vkBindImageMemory(device, image, imageMemory, 0);
 }
 
+//megfelelő megfelelő formátum kereső
 VkFormat VulkanUtils::findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
     for (VkFormat format : candidates) {
         VkFormatProperties props;
@@ -79,6 +84,7 @@ VkFormat VulkanUtils::findSupportedFormat(VkPhysicalDevice physicalDevice, const
     throw std::runtime_error("Hiba: Nem talalhato tamogatott formatum a kartyan!");
 }
 
+//A kártya által támogatott legideálisabb pixel/memória formátum megkeresése
 VkFormat VulkanUtils::findDepthFormat(VkPhysicalDevice physicalDevice) {
     return findSupportedFormat(
         physicalDevice,

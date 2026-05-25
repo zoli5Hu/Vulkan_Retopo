@@ -33,6 +33,9 @@ Renderer::~Renderer() {
     vkDestroyRenderPass(vulkanContext->device, renderPass, nullptr);
 }
 
+//ez adja meg a színeket és a mélység is itt adható meg
+//megmondja mi történjen a kép tartsa meg vagy törölje
+
 void Renderer::createRenderPass(VkFormat depthFormat) {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = vulkanContext->swapChainImageFormat;
@@ -53,21 +56,21 @@ void Renderer::createRenderPass(VkFormat depthFormat) {
     depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
+    //szín ohzzáadás
     VkAttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
+    //mélység
     VkAttachmentReference depthAttachmentRef{};
     depthAttachmentRef.attachment = 1;
     depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
+    //egy konkrét múvelet a renderpasson belül
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
     subpass.pDepthStencilAttachment = &depthAttachmentRef;
-
+    //összefűzés
     std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -80,10 +83,10 @@ void Renderer::createRenderPass(VkFormat depthFormat) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Render Pass-t!");
     }
 }
-
+//Ez kapcsolja össze a RenderPass "receptjét" a konkrét Swapchain vásznakkal (Ide rajzol a GPU)
 void Renderer::createFramebuffers() {
     swapChainFramebuffers.resize(vulkanContext->swapChainImageViews.size());
-
+    //végigmegyün a swapchain képeken és mindegyikhez létrehozunk egy framebuffer-t amiben lesz egy szín és egy mélység attachment
     for (size_t i = 0; i < vulkanContext->swapChainImageViews.size(); i++) {
         std::array<VkImageView, 2> attachments = {
             vulkanContext->swapChainImageViews[i],
@@ -104,7 +107,7 @@ void Renderer::createFramebuffers() {
         }
     }
 }
-
+//A memóriatároló , ami a parancslisták (Command Bufferek) létrehozásához és kezeléséhez adja a memóriát
 void Renderer::createCommandPool() {
     // Biztonságos Queue Family keresés
     uint32_t queueFamilyCount = 0;
@@ -129,7 +132,7 @@ void Renderer::createCommandPool() {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Command Pool-t!");
     }
 }
-
+//az utasítások tárolója ahol a végrehajtások listáját tartjuk
 void Renderer::createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -143,7 +146,8 @@ void Renderer::createCommandBuffers() {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Command Buffereket!");
     }
 }
-
+//teljes render pass folyamat leindítása bekötjük a
+//render pass-t , pipelinet , vertex buffert háromszög kirajzolása , renderpass vége
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Pipeline* pipeline, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t indexCount, VkDescriptorSet descriptorSet) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -159,21 +163,25 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = vulkanContext->swapChainExtent;
 
+    //kép letörlése felül írja egy másik szinnel
     std::array<VkClearValue, 2> clearValues{};
     clearValues[0].color = {{0.01f, 0.01f, 0.01f, 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
 
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
-
+    //elindítja a render passt
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
+    //hozzákötjük a pipelinet
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
 
     VkBuffer vertexBuffers[] = {vertexBuffer};
     VkDeviceSize offsets[] = {0};
+    //vertexek bekötése
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    //a vertexek indexének bekötése
     vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
 
     // A Kamera (DescriptorSet) bekötése
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
@@ -186,7 +194,8 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
     }
 }
-
+//synkornizációért felelős
+//megvárju kamíg a gpu végez egy feladattla utána küldjük tovább a cpunak és közben egyszerre dolgoznak más képeken
 void Renderer::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -198,7 +207,6 @@ void Renderer::createSyncObjects() {
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (vkCreateSemaphore(vulkanContext->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
             vkCreateFence(vulkanContext->device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
@@ -212,9 +220,10 @@ void Renderer::createSyncObjects() {
         }
     }
 }
-
+//framek kirajzolása a képernyőre
 void Renderer::drawFrame(Pipeline *pipeline, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t indexCount,
                          VkDescriptorSet descriptorSet) {
+    //sync
     vkWaitForFences(vulkanContext->device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     vkResetFences(vulkanContext->device, 1, &inFlightFences[currentFrame]);
 

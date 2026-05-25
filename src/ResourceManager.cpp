@@ -4,9 +4,9 @@
 #include <unordered_map>
 #include <tiny_obj_loader.h>
 
-#include "RetopoApp.h"
 #include "VulkanUtils.h"
 
+//vulkan erroforrások betöltése
 ResourceManager::ResourceManager(VkDevice device, VkPhysicalDevice physicalDevice)
     : device(device), physicalDevice(physicalDevice) {}
 
