@@ -5,6 +5,9 @@
 #include <limits>    // A std::numeric_limits miatt kell
 #include <stdexcept> // A std::runtime_error miatt kell
 
+#include "VulkanUtils.h"
+
+//kommunikáció a vulkannal
 VulkanContext::VulkanContext(GLFWwindow *window) {
     this->window = window;
     
@@ -20,6 +23,7 @@ VulkanContext::VulkanContext(GLFWwindow *window) {
 
 VulkanContext::~VulkanContext() {}
 
+//attól függően milyen modban idítjuk kell e hibakereső
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -29,10 +33,11 @@ const bool enableValidationLayers = true;
 const std::vector<const char *> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
-
+//debug rendszer beállítása
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
                                       const VkAllocationCallbacks *pAllocator,
                                       VkDebugUtilsMessengerEXT *pDebugMessenger) {
+    //csinálunk egy fügvényt ami lekér üres mutatókat ha sikerül akkor megtöltjük az üres memória címeket
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
         return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
@@ -40,7 +45,7 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 }
-
+//debug fleszabadító
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks *pAllocator) {
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -51,7 +56,8 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 const std::vector<const char *> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
-
+//ez az fg fog visszadni hogy jól fut e a kód
+//ez a bool a vulkán spéci változója multiplatform miatt kell
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -61,6 +67,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
+//példányostás létrehozása
 void VulkanContext::createInstance() {
     if (enableValidationLayers) {
         std::cout << "Validation layerek bekapcsolva!" << std::endl;
@@ -78,10 +85,12 @@ void VulkanContext::createInstance() {
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
+    //ablakkkezelő megnézése oprendszer függően
     uint32_t glfwExtensionCount = 0;
     const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
+//molten vk beállítása
 #ifdef __APPLE__
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
     extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
@@ -95,6 +104,7 @@ void VulkanContext::createInstance() {
     createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
 
+    //extra debugok hozzáadása
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
     if (enableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
@@ -103,6 +113,7 @@ void VulkanContext::createInstance() {
         populateDebugMessengerCreateInfo(debugCreateInfo);
         createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *) &debugCreateInfo;
     } else {
+        //megadjuk a réteget main fut
         createInfo.enabledLayerCount = 0;
         createInfo.pNext = nullptr;
     }
@@ -114,10 +125,12 @@ void VulkanContext::createInstance() {
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
 }
 
+//debug messenger elindítása
 void VulkanContext::setupDebugMessenger() {
     if (!enableValidationLayers) return;
-
+    //extrák
     VkDebugUtilsMessengerCreateInfoEXT createInfo;
+    //infok
     populateDebugMessengerCreateInfo(createInfo);
 
     if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
@@ -125,6 +138,7 @@ void VulkanContext::setupDebugMessenger() {
     }
 }
 
+//vulkán és az ablak közötti híd
 void VulkanContext::createSurface() {
     if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Window Surface-t!");
@@ -132,17 +146,22 @@ void VulkanContext::createSurface() {
     std::cout << "Window Surface sikeresen letrehozva!" << std::endl;
 }
 
+//fizikai eszköz megkeresése milyen gpu van a égpben
 void VulkanContext::pickPhysicalDevice() {
+    //lehet több gpu is
     uint32_t deviceCount = 0;
+    //nullal inicializáljuk két lépcsős hitelesítés megnézzük a dbt
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
     if (deviceCount == 0) {
         throw std::runtime_error("Hiba: Nem talalhato Vulkan kompatibilis videokartya!");
     }
-
+    //létrehozzuk a db alapján vectort hogy jó mennyiségü memóriát foglaljunk le
     std::vector<VkPhysicalDevice> devices(deviceCount);
+    //ténylegesen inicializáljuk
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
+    //megkeressük a használható eszközt és azt töltjük be
     for (const auto &device: devices) {
         if (isDeviceSuitable(device)) {
             physicalDevice = device;
@@ -154,8 +173,9 @@ void VulkanContext::pickPhysicalDevice() {
         throw std::runtime_error("Hiba: Nem talalhato a feladatra alkalmas videokartya!");
     }
 }
-
+//gpu parancsok lekérése
 void VulkanContext::createLogicalDevice() {
+    //megnézzük milyen parancs családok vnanak
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -170,7 +190,7 @@ void VulkanContext::createLogicalDevice() {
         queueCreateInfo.pQueuePriorities = &queuePriority;
         queueCreateInfos.push_back(queueCreateInfo);
     }
-
+    //az eszköz amiből kinyerjük a lehetőségeket
     VkPhysicalDeviceFeatures deviceFeatures{};
 
     VkDeviceCreateInfo createInfo{};
@@ -205,13 +225,18 @@ void VulkanContext::createLogicalDevice() {
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
+//swapchain létrehozása hogy legyenek képek amiket előkészítünk ohgy ismább legyen a kép
 void VulkanContext::createSwapChain() {
+    //megnézzük miket támoat a gpu
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
-
+    //kiválasztja a ofrmátumot pl szín
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+    //képkezelési mod pl azonnal ahogy kész a kép ki rajzoljuk
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+    //a kép felbontását állítja be
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
+    //képek mennyiségének bállítása hanyas renderelés legyne plu double or trippple
     uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
     if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
         imageCount = swapChainSupport.capabilities.maxImageCount;
@@ -227,6 +252,7 @@ void VulkanContext::createSwapChain() {
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
+    //itt nézzük emg milyen őarancsaink vannak
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
@@ -245,11 +271,11 @@ void VulkanContext::createSwapChain() {
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
-
+    //létrehozza a képek kezelési rendszerét
     if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Swap Chain-t!");
     }
-
+    //átvett adatok kezelése
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
@@ -262,25 +288,12 @@ void VulkanContext::createSwapChain() {
 
 void VulkanContext::createImageViews() {
     swapChainImageViews.resize(swapChainImages.size());
-
     for (size_t i = 0; i < swapChainImages.size(); i++) {
-        VkImageViewCreateInfo viewInfo{};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = swapChainImages[i];
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = swapChainImageFormat;
-        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        viewInfo.subresourceRange.baseMipLevel = 0;
-        viewInfo.subresourceRange.levelCount = 1;
-        viewInfo.subresourceRange.baseArrayLayer = 0;
-        viewInfo.subresourceRange.layerCount = 1;
-
-        if (vkCreateImageView(device, &viewInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
-            throw std::runtime_error("Hiba: Nem sikerult letrehozni az Image View-t!");
-        }
+        // Használjuk a szerszámosládát!
+        swapChainImageViews[i] = VulkanUtils::createImageView(device, swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 }
-
+//debug info fgje
 void VulkanContext::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
     createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;

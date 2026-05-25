@@ -7,7 +7,9 @@
 
 // Ezek a struktúrák átköltöztek ide a RetopoApp.h-ból!
 struct QueueFamilyIndices {
+    //a kép kirajzolásahoz szükséges parancsok (pl. rajzolás, buffer másolás)
     std::optional<uint32_t> graphicsFamily;
+    //kép megjelenítése monitoron
     std::optional<uint32_t> presentFamily;
     bool isComplete() {
         return graphicsFamily.has_value() && presentFamily.has_value();

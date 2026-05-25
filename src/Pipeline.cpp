@@ -4,12 +4,15 @@
 #include <stdexcept>
 #include <fstream>
 
+//bállítjunk egy egyedi megjelenítési sorozatot
+//input->vertex shader->háromszögelés->raszterializálás->színezés->összemosás->adatok betöltése bufferba
 Pipeline::Pipeline(VkDevice device, const std::string& vertFilepath, const std::string& fragFilepath, VkRenderPass renderPass, VkExtent2D extent, VkDescriptorSetLayout descriptorSetLayout)
     : device(device) {
     createGraphicsPipeline(vertFilepath, fragFilepath, renderPass, extent, descriptorSetLayout);
 }
 
 Pipeline::~Pipeline() {
+    //a törlések hivatkozás alapján mennek a fő rendszerhez kell midnen először azt kapcsoljuk ki hogy már ne legyen kapcsolat közöttük
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
@@ -24,6 +27,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     fragShaderModule = createShaderModule(fragShaderCode);
 
     // 1. Shader szakaszok beállítása
+    //miket hazsnálunk vert/frag ki hagyhatunk részeket ha akarunk
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -39,6 +43,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
     // 2. Vertex Input
+    //Leírja a GPU-nak a bejövő Vertex adatok formátumát (hol van a pozíció, szín stb. a memóriában)
     auto bindingDescription = Vertex::getBindingDescription();
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
@@ -50,11 +55,13 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     // 3. Input Assembly
+    //Megmondjuk a GPU-nak, hogy a nyers pontokból hogyan építsen alakzatot (pl. háromszögeket vagy vonalakat - Topológia)
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
     // 4. Viewport és Scissor
+    //képernyő méret bállítása pl nagyítás nyújtás
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -62,7 +69,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     viewport.height = (float) extent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-
+    //képernyő vágása hol legyen kép nem nyújt vagy nagyít
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = extent;
@@ -75,6 +82,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     viewportState.pScissors = &scissor;
 
     // 5. Raszterizáló
+    //hogyan diszkretizáljuk pixelekre az alakzatunkat
     VkPipelineRasterizationStateCreateInfo rasterizer{};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
@@ -83,11 +91,13 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
 
     // 6. Multisampling
+    //élek kezelése alakzatok között hogy átmenetes lehessen pl multisapling
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     // 7. Color Blending
+    //aplha vagy üveg beállítások
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
@@ -107,6 +117,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     depthStencil.stencilTestEnable = VK_FALSE;
 
     // 8. Pipeline Layout (Most már rákötjük a leendő UBO elrendezésünket!)
+    //ez elkezli a shader layoutokat hogy tudjuk milyen description setek kellenek
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
@@ -139,6 +150,7 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     std::cout << "Graphics Pipeline (A Tervrajz) sikeresen megepitve!" << std::endl;
 }
 
+//shaderkodok beolvasás frag,vert
 std::vector<char> Pipeline::readFile(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::ate | std::ios::binary);
 
@@ -156,6 +168,7 @@ std::vector<char> Pipeline::readFile(const std::string& filepath) {
     return buffer;
 }
 
+//A már előre lefordított SPIR-V (.spv) bájtkódot becsomagolja egy modulba, amit a GPU drivere megért
 VkShaderModule Pipeline::createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

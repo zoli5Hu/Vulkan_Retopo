@@ -5,17 +5,21 @@
 #include <tiny_obj_loader.h>
 
 #include "RetopoApp.h"
+#include "VulkanUtils.h"
 
 ResourceManager::ResourceManager(VkDevice device, VkPhysicalDevice physicalDevice)
     : device(device), physicalDevice(physicalDevice) {}
 
 ResourceManager::~ResourceManager() {}
 
-// IDE MÁSOLD ÁT a RetopoApp-ból:
 // - loadModel
 void ResourceManager::loadModel(const std::string &filename, std::vector<Vertex> &vertices, std::vector<uint32_t> &indices) {
+
+    //ponthalmazd és obj adatok
     tinyobj::attrib_t attrib;
+    //megmondja mettől meddig van 1 objektum adatai
     std::vector<tinyobj::shape_t> shapes;
+    //tulajdonság liusta pl szín
     std::vector<tinyobj::material_t> materials;
     std::string warn, err;
 
@@ -24,25 +28,27 @@ void ResourceManager::loadModel(const std::string &filename, std::vector<Vertex>
     }
 
     std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-
+    //elkezdjük a duplikált vertexeket egy olyan mapbe rakni ahol már nem a duplikált vertexek vannak és látjuk melyik mi után jön
     for (const auto& shape : shapes) {
         for (const auto& index : shape.mesh.indices) {
             Vertex vertex{};
 
             // 1. Pozíció kiolvasása a nyers OBJ adatokból
+            //azért szorzunk mert a maradéskos osztás lassú
             vertex.pos = {
                 attrib.vertices[3 * index.vertex_index + 0],
                 attrib.vertices[3 * index.vertex_index + 1],
                 attrib.vertices[3 * index.vertex_index + 2]
             };
 
-            // 2. Szín beállítása (mivel az obj-ben nincs szín, legyen sima fehér)
+            // 2. Szín beállítása (mivel az obj-ben nincs szín, legyen sima fehér+pos)
+            //a maxal le clampeljük
             vertex.color = {
                 std::max(0.0f, vertex.pos.x + 0.5f),
                 std::max(0.0f, vertex.pos.y + 0.5f),
                 std::max(0.0f, vertex.pos.z + 0.5f)
             };
-            // 3. A ZSENIÁLIS TRÜKK: Ha ezt a pontot még nem láttuk, mentsük el!
+            // 3.  Ha ezt a pontot még nem láttuk, mentsük el!
             if (uniqueVertices.count(vertex) == 0) {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
                 vertices.push_back(vertex);
@@ -59,7 +65,7 @@ void ResourceManager::loadModel(const std::string &filename, std::vector<Vertex>
 
 
 
-// - createVertexBuffer
+// - createVertexBuffer itt adjuk meg hogy mekkora területet akarunk lefoglalni
 void ResourceManager::createVertexBuffer(VkBuffer &vertexBuffer, VkDeviceMemory &vertexBufferMemory, const std::vector<Vertex> &vertices) {
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -83,8 +89,7 @@ void ResourceManager::createVertexBuffer(VkBuffer &vertexBuffer, VkDeviceMemory 
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     // Olyan memóriát kérünk, amit a C++ (CPU) is lát, és azonnal szinkronizálódik
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
+    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a Vertex Buffernek!");
     }
@@ -100,138 +105,49 @@ void ResourceManager::createVertexBuffer(VkBuffer &vertexBuffer, VkDeviceMemory 
 }
 
 // - createIndexBuffer
+// Indexbuffer létrehozása: ez tárolja a rajzolási sorrendet (sorszámokat), amik a ritkított pontokra mutatnak
 void ResourceManager::createIndexBuffer(VkBuffer &indexBuffer, VkDeviceMemory &indexBufferMemory, const std::vector<uint32_t> &indices) {
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // <-- FIGYELEM: INDEX BUFFER!
+    bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // <-- INDEX BUFFER!
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     if (vkCreateBuffer(device, &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni az Index Buffert!");
     }
-
+    //tényleges memória lefoglalása a gpun  buffer alapján
     VkMemoryRequirements memRequirements;
     vkGetBufferMemoryRequirements(device, indexBuffer, &memRequirements);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
+    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     if (vkAllocateMemory(device, &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni az Index Buffernek!");
     }
-
+    //hozzákötjük a buffer adatokat memóriához
     vkBindBufferMemory(device, indexBuffer, indexBufferMemory, 0);
-
+    //tényyleges másolás
     void* data;
     vkMapMemory(device, indexBufferMemory, 0, bufferSize, 0, &data);
     memcpy(data, indices.data(), (size_t) bufferSize);
     vkUnmapMemory(device, indexBufferMemory);
 }
 
-//segédfügvények
-uint32_t ResourceManager::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-    throw std::runtime_error("Hiba: Nem talalhato megfelelo tipusu memoria a GPU-n!");
-
-}
-
-void ResourceManager::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory) {
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = width;
-    imageInfo.extent.height = height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = format;
-    imageInfo.tiling = tiling;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = usage;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-        throw std::runtime_error("Hiba: Nem sikerult letrehozni a kepet!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a kepnek!");
-    }
-
-    vkBindImageMemory(device, image, imageMemory, 0);
-}
-
-VkImageView ResourceManager::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
-    VkImageViewCreateInfo viewInfo{};
-    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = image;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = format;
-    viewInfo.subresourceRange.aspectMask = aspectFlags;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
-
-    VkImageView imageView;
-    if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
-        throw std::runtime_error("Hiba: Nem sikerult letrehozni az Image View-t!");
-    }
-    return imageView;
-}
 
 // - createDepthResources (és a segédjei: createImage, createImageView, findMemoryType, findDepthFormat)
 // --- MÉLYSÉG-TÁROLÓ (Z-BUFFER) SEGÉDFÜGGVÉNYEI ---
 
-// 1. Átköltözött a ResourceManagerbe!
-VkFormat ResourceManager::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
-    for (VkFormat format : candidates) {
-        VkFormatProperties props;
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
-        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
-            return format;
-        } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
-            return format;
-        }
-    }
-    throw std::runtime_error("Hiba: Nem talalhato tamogatott formatum a kartyan!");
-}
 
-// 2. Átköltözött a ResourceManagerbe! (Nem kell a RetopoApp::)
-VkFormat ResourceManager::findDepthFormat() {
-    return findSupportedFormat(
-        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-    );
-}
-
-// 3. A fő függvény javítva az új paraméterekkel
+// 3. Létrehozza a mélység-tároló képet, memóriát és képnézetet
 void ResourceManager::createDepthResources(VkExtent2D extent, VkFormat depthFormat, VkImage& depthImage, VkDeviceMemory& depthImageMemory, VkImageView& depthImageView) {
 
     // Itt a paraméterből kapott extent.width és extent.height-et használjuk!
-    createImage(extent.width, extent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
+    VulkanUtils::createImage(device, physicalDevice, extent.width, extent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
 
-    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+    depthImageView = VulkanUtils::createImageView(device, depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 }

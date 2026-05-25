@@ -14,10 +14,10 @@ public:
     // Modell adatok
     void loadModel(const std::string &filename, std::vector<Vertex> &vertices, std::vector<uint32_t> &indices);
 
-    // Buffer kezelés
+    // Buffer kezelés vertex adatok
     void createVertexBuffer(VkBuffer &vertexBuffer, VkDeviceMemory &vertexBufferMemory,
                             const std::vector<Vertex> &vertices);
-
+    //a vertex indexek buffere
     void createIndexBuffer(VkBuffer &indexBuffer, VkDeviceMemory &indexBufferMemory,
                            const std::vector<uint32_t> &indices);
 
@@ -25,20 +25,10 @@ public:
     void createDepthResources(VkExtent2D extent, VkFormat depthFormat, VkImage &depthImage,
                               VkDeviceMemory &depthImageMemory, VkImageView &depthImageView);
 
-    VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling,
-                                 VkFormatFeatureFlags features);
-
-    VkFormat findDepthFormat();
-
-    // Segédfüggvények
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-
-    void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
-                     VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
-
-    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 
 private:
+    //a változó amin keresztül kommunikálunk a gpuval
     VkDevice device;
+    //Maga a kiválasztott fizikai videókártya (ebből kérdezzük le a hardver képességeit)
     VkPhysicalDevice physicalDevice;
 };

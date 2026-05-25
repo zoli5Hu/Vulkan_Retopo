@@ -4,6 +4,8 @@
 #include <chrono>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "VulkanUtils.h"
+
 //képernyő adatainak inicializálása
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -35,7 +37,7 @@ void RetopoApp::initVulkan() {
     resourceManager = std::make_unique<ResourceManager>(vulkanContext->device, vulkanContext->physicalDevice);
 
     // 3. Z-BUFFER KÉSZÍTÉSE
-    VkFormat depthFormat = resourceManager->findDepthFormat();
+    VkFormat depthFormat = VulkanUtils::findDepthFormat(vulkanContext->physicalDevice);
     resourceManager->createDepthResources(vulkanContext->swapChainExtent, depthFormat, depthImage, depthImageMemory, depthImageView);
 
     // 4. RAJZOLÓ (Renderer) ELINDÍTÁSA
@@ -74,7 +76,7 @@ void RetopoApp::mainLoop() {
         // 2. Szólunk a Renderernek, hogy rajzolja ki a kockát
         renderer->drawFrame(graphicsPipeline.get(), vertexBuffer, indexBuffer, static_cast<uint32_t>(indices.size()), descriptorSets[renderer->getCurrentFrame()]);
     }
-    //megvárja a semaphorokat
+    //mindent megállít hogy nehogy töröljünk valamit amut a gpu még rajzol
     vkDeviceWaitIdle(vulkanContext->device);
 }
 
@@ -96,7 +98,7 @@ void RetopoApp::cleanup() {
     //shader kapcsolódások törlése
     vkDestroyDescriptorPool(vulkanContext->device, descriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(vulkanContext->device, descriptorSetLayout, nullptr);
-    //kép tulajdonságainak fleszabadítása
+    //magát a képet és a lancsét is felszabadítjuk
     vkDestroyImageView(vulkanContext->device, depthImageView, nullptr);
     vkDestroyImage(vulkanContext->device, depthImage, nullptr);
     vkFreeMemory(vulkanContext->device, depthImageMemory, nullptr);
@@ -112,6 +114,7 @@ void RetopoApp::cleanup() {
     glfwTerminate();
 }
 
+//megadja a shader layout bindolást megnézi millyen típús buffer kell
 void RetopoApp::createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
@@ -129,6 +132,7 @@ void RetopoApp::createDescriptorSetLayout() {
     }
 }
 
+//Buffer létrehozása a folyamatosan változó kamera- és 3D mátrixoknak
 void RetopoApp::createUniformBuffers() {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
@@ -136,6 +140,7 @@ void RetopoApp::createUniformBuffers() {
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
+    //cpu és gpu oldalon is ofglalunk helyet hogy tudjanak külön működni
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -153,8 +158,7 @@ void RetopoApp::createUniformBuffers() {
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = resourceManager->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
+        allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(vulkanContext->physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (vkAllocateMemory(vulkanContext->device, &allocInfo, nullptr, &uniformBuffersMemory[i]) != VK_SUCCESS) {
             throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a Uniform Buffernek!");
         }
@@ -165,6 +169,7 @@ void RetopoApp::createUniformBuffers() {
     }
 }
 
+//descriptonseteknek előre lefoglal memória terület
 void RetopoApp::createDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -181,6 +186,7 @@ void RetopoApp::createDescriptorPool() {
     }
 }
 
+//megadja a buffer címát a shadernek
 void RetopoApp::createDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -193,7 +199,7 @@ void RetopoApp::createDescriptorSets() {
     if (vkAllocateDescriptorSets(vulkanContext->device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult lefoglalni a Descriptor Set-eket!");
     }
-
+    //minden képnek amit előkészítünk fogallunk helyet
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffers[i];
@@ -213,6 +219,7 @@ void RetopoApp::createDescriptorSets() {
     }
 }
 
+//képváltozások kezelése memória szinten
 void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -230,9 +237,3 @@ void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
 
     memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }
-
-
-
-
-
-

@@ -17,13 +17,17 @@ public:
 
     ~Pipeline();
 
-    // --- ÚJ SOR: Hogy a RetopoApp el tudja kérni a megépített futószalagot ---
+    // Hogy a RetopoApp el tudja kérni a megépített futószalagot ---
     VkPipeline getPipeline() const { return graphicsPipeline; }
-    VkPipelineLayout getPipelineLayout() const { return pipelineLayout; } // <--- EZT AZ EGY SORT ADD HOZZÁ!
+    VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
 private:
+    //ez komunikál a hardverrel
     VkDevice device;
+    //ez a telejes futószalag, amit a Renderer használni fog
     VkPipeline graphicsPipeline;
-    VkPipelineLayout pipelineLayout; // Ez kell a shader változókhoz (később)
+    //layout binding használata
+    VkPipelineLayout pipelineLayout;
+    //ver,frag becsomagolva
     VkShaderModule vertShaderModule;
     VkShaderModule fragShaderModule;
 

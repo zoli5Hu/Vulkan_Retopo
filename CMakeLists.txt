@@ -90,6 +90,8 @@ add_executable(Pro
         src/Renderer.h        # <--- ÚJ
         src/ResourceManager.cpp # <--- ÚJ
         src/ResourceManager.h   # <--- ÚJ
+        src/VulkanUtils.cpp  # <--- EZT ADD HOZZÁ
+        src/VulkanUtils.h    # <--- EZT IS ADD HOZZÁ
 )
 # Ez biztosítja, hogy a shaderek leforduljanak az exe előtt
 add_dependencies(Pro CompileShaders)
@@ -116,6 +118,7 @@ add_executable(VulkanTests
         src/VulkanContext.cpp # <--- Add hozzá ezeket is!
         src/Renderer.cpp
         src/ResourceManager.cpp
+        src/VulkanUtils.cpp  # <--- IDE IS ADD HOZZÁ
 )
 
 # Kötések (Include mappák)
