@@ -221,14 +221,22 @@ void RetopoApp::createDescriptorSets() {
 
 //képváltozások kezelése memória szinten
 void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // 1. MODEL: Kivettük a forgást! A kocka most már nyugodtan áll a [0,0,0] pontban.
+    ubo.model = glm::mat4(1.0f);
+
+    // 2. VIEW: Kiszámoljuk, hol van a kamera a Gömbkoordináták (Yaw, Pitch, Radius) alapján
+    float camX = cameraTarget.x + cameraRadius * cos(glm::radians(cameraPitch)) * cos(glm::radians(cameraYaw));
+    float camY = cameraTarget.y + cameraRadius * cos(glm::radians(cameraPitch)) * sin(glm::radians(cameraYaw));
+    float camZ = cameraTarget.z + cameraRadius * sin(glm::radians(cameraPitch));
+
+    glm::vec3 cameraPos = glm::vec3(camX, camY, camZ);
+
+    // Beállítjuk a kamerát: (Honnan nézünk, Mit nézünk, Melyik a "Felfelé" irány)
+    ubo.view = glm::lookAt(cameraPos, cameraTarget, glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // 3. PROJ: A lencse torzítása (Ez marad a régi)
     ubo.proj = glm::perspective(glm::radians(45.0f),
                                 vulkanContext->swapChainExtent.width / (float) vulkanContext->swapChainExtent.height,
                                 0.1f, 10.0f);
@@ -236,4 +244,64 @@ void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
     ubo.proj[1][1] *= -1; // A Vulkan Y-tengely korrekciója
 
     memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+}
+
+// =========================================================
+// EGÉR KEZELŐ FÜGGVÉNYEK (BLENDER KAMERA)
+// =========================================================
+
+// Statikus hidak a GLFW (C nyelv) és az osztályunk (C++) között
+void RetopoApp::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    auto app = reinterpret_cast<RetopoApp*>(glfwGetWindowUserPointer(window));
+    app->onMouseButton(button, action, mods);
+}
+void RetopoApp::cursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
+    auto app = reinterpret_cast<RetopoApp*>(glfwGetWindowUserPointer(window));
+    app->onCursorPos(xpos, ypos);
+}
+void RetopoApp::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+    auto app = reinterpret_cast<RetopoApp*>(glfwGetWindowUserPointer(window));
+    app->onScroll(yoffset);
+}
+
+// Belső logika
+void RetopoApp::onMouseButton(int button, int action, int mods) {
+    // Ha a bal TARTJUK lenyomva, akkor "keringünk" (orbit)
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == GLFW_PRESS) {
+            isOrbiting = true;
+            glfwGetCursorPos(window, &lastMouseX, &lastMouseY); // Megjegyezzük, hol volt az egér kattintáskor
+        } else if (action == GLFW_RELEASE) {
+            isOrbiting = false;
+        }
+    }
+}
+
+void RetopoApp::onCursorPos(double xpos, double ypos) {
+    if (isOrbiting) {
+        // Mennyit mozdult az egér az előző képkocka óta?
+        float deltaX = static_cast<float>(xpos - lastMouseX);
+        float deltaY = static_cast<float>(ypos - lastMouseY);
+
+        // Forgatás (Az egér érzékenysége itt 0.5f)
+        cameraYaw -= deltaX * 0.5f;
+        cameraPitch += deltaY * 0.5f;
+
+        // "Satu": Ne tudjon a kamera átfordulni a feje tetejére (max 89 fok)
+        if (cameraPitch > 89.0f) cameraPitch = 89.0f;
+        if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+
+        // Frissítjük a memóriát a következő körhöz
+        lastMouseX = xpos;
+        lastMouseY = ypos;
+    }
+}
+
+void RetopoApp::onScroll(double yoffset) {
+    // Zoom in / Zoom out
+    cameraRadius -= static_cast<float>(yoffset) * 0.5f;
+
+    // Biztonsági korlátok, hogy ne menjünk bele a kocka közepébe
+    if (cameraRadius < 0.5f) cameraRadius = 0.5f;
+    if (cameraRadius > 20.0f) cameraRadius = 20.0f;
 }

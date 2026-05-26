@@ -44,6 +44,28 @@ private:
     //maga az ablakra mutató pointer
     GLFWwindow* window;
 
+    // --- ÚJ: Kamera és Egér (Blender stílus) ---
+    glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f); // Mit nézünk (Fókuszpont)
+    float cameraRadius = 4.0f;                            // Milyen messze vagyunk a tárgytól
+    float cameraYaw = 45.0f;                              // Vízszintes forgás (Egyenlítő)
+    float cameraPitch = 30.0f;                            // Függőleges forgás (Észak-Dél)
+
+    bool isOrbiting = false;                              // Épp nyomva tartjuk-e a gombot
+    double lastMouseX = 0.0;                              // Hol volt az egér az előző pillanatban
+    double lastMouseY = 0.0;
+
+    // GLFW C-stílusú "lehallgató" (callback) függvényei
+    static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+    static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+    static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+
+    // Belső C++ feldolgozók, amik már hozzáférnek az osztály változóihoz
+    void onMouseButton(int button, int action, int mods);
+    void onCursorPos(double xpos, double ypos);
+    void onScroll(double yoffset);
+    // ------------------------------------------
+
+
     // --- Erőforrások (Amit mi "birtokolunk") ---
     //mélységi kép hogy tudjuk mi van elől hátul
     VkImage depthImage;
