@@ -5,8 +5,21 @@
 #include <string>
 #include "Vertex.h"
 
+
+// ÚJ: Ez a struktúra tárolja egyetlen modell minden adatát
+struct ModelData {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+};
+
 class ResourceManager {
 public:
+
+
     ResourceManager(VkDevice device, VkPhysicalDevice physicalDevice);
 
     ~ResourceManager();

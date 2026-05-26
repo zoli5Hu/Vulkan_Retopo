@@ -4,6 +4,7 @@
 #include <vector>
 #include "VulkanContext.h"
 #include "Pipeline.h"
+#include "ResourceManager.h" // <-- ÚJ: Ezt be kell húzni, hogy lássa a ModelData-t!
 
 class Renderer {
 public:
@@ -14,8 +15,8 @@ public:
     VkRenderPass getRenderPass() const { return renderPass; }
     uint32_t getCurrentFrame() const { return currentFrame; }
 
-    // A fő rajzoló függvény
-    void drawFrame(Pipeline* pipeline, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t indexCount, VkDescriptorSet descriptorSet);
+    // MÓDOSÍTVA: A régi vertex/index bufferek helyett most a models listát kéri!
+    void drawFrame(Pipeline* pipeline, const std::vector<ModelData>& models, VkDescriptorSet descriptorSet);
 
 private:
     VulkanContext* vulkanContext;
@@ -41,5 +42,6 @@ private:
     void createCommandBuffers();
     void createSyncObjects();
 
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Pipeline* pipeline, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t indexCount, VkDescriptorSet descriptorSet);
+    // MÓDOSÍTVA: Itt is a models listát kéri!
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Pipeline* pipeline, const std::vector<ModelData>& models, VkDescriptorSet descriptorSet);
 };

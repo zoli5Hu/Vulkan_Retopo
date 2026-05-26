@@ -50,10 +50,8 @@ void RetopoApp::initVulkan() {
     renderer = std::make_unique<Renderer>(vulkanContext.get(), depthImageView, depthFormat);
 
     // 5. GEOMETRIA BETÖLTÉSE
-    resourceManager->loadModel("modells/kocka.obj", vertices, indices);
-    resourceManager->createVertexBuffer(vertexBuffer, vertexBufferMemory, vertices);
-    resourceManager->createIndexBuffer(indexBuffer, indexBufferMemory, indices);
-
+    loadNewModel("modells/kocka.obj");
+    loadNewModel("modells/monkey.obj"); // <--- Még egy betöltése!
     // 6. KAMERA RENDSZER
     createDescriptorSetLayout();
     createUniformBuffers();
@@ -79,9 +77,8 @@ void RetopoApp::mainLoop() {
         // 1. Frissítjük a kamerát/forgást az adott képkockához
         updateUniformBuffer(renderer->getCurrentFrame());
 
-        // 2. Szólunk a Renderernek, hogy rajzolja ki a kockát
-        renderer->drawFrame(graphicsPipeline.get(), vertexBuffer, indexBuffer, static_cast<uint32_t>(indices.size()), descriptorSets[renderer->getCurrentFrame()]);
-    }
+        // 2. Szólunk a Renderernek, hogy rajzolja ki az összes modellt
+        renderer->drawFrame(graphicsPipeline.get(), loadedModels, descriptorSets[renderer->getCurrentFrame()]);    }
     //mindent megállít hogy nehogy töröljünk valamit amut a gpu még rajzol
     vkDeviceWaitIdle(vulkanContext->device);
 }
@@ -90,11 +87,16 @@ void RetopoApp::cleanup() {
     // semaphores leállítása, mielőtt törlünk
     vkDeviceWaitIdle(vulkanContext->device);
 
-    // 1. Birtokolt memóriánk törlése
-    vkDestroyBuffer(vulkanContext->device, indexBuffer, nullptr);
-    vkFreeMemory(vulkanContext->device, indexBufferMemory, nullptr);
-    vkDestroyBuffer(vulkanContext->device, vertexBuffer, nullptr);
-    vkFreeMemory(vulkanContext->device, vertexBufferMemory, nullptr);
+    // 1. Végigmegyünk az összes betöltött modellen, és töröljük a memóriájukat
+    for (auto& model : loadedModels) {
+        vkDestroyBuffer(vulkanContext->device, model.indexBuffer, nullptr);
+        vkFreeMemory(vulkanContext->device, model.indexBufferMemory, nullptr);
+        vkDestroyBuffer(vulkanContext->device, model.vertexBuffer, nullptr);
+        vkFreeMemory(vulkanContext->device, model.vertexBufferMemory, nullptr);
+    }
+    loadedModels.clear();
+
+    // === INNEN KITÖRÖLTÜK A HIBÁS 4 SORT! ===
 
     //processzor és videókártya kzött kapcsolat felszabdítása
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -119,7 +121,6 @@ void RetopoApp::cleanup() {
     glfwDestroyWindow(window);
     glfwTerminate();
 }
-
 //megadja a shader layout bindolást megnézi millyen típús buffer kell
 void RetopoApp::createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
@@ -334,4 +335,17 @@ void RetopoApp::onScroll(double yoffset) {
     // Biztonsági korlátok, hogy ne menjünk túl közel vagy túl távol
     if (cameraRadius < 0.5f) cameraRadius = 0.5f;
     if (cameraRadius > 20.0f) cameraRadius = 20.0f;
+}
+
+void RetopoApp::loadNewModel(const std::string& filepath) {
+    ModelData newModel{};
+
+    // Betöltjük az adatokat a fájlból
+    resourceManager->loadModel(filepath, newModel.vertices, newModel.indices);
+    // Létrehozzuk hozzá a Vulkan buffereket
+    resourceManager->createVertexBuffer(newModel.vertexBuffer, newModel.vertexBufferMemory, newModel.vertices);
+    resourceManager->createIndexBuffer(newModel.indexBuffer, newModel.indexBufferMemory, newModel.indices);
+
+    // Hozzáadjuk a listánkhoz
+    loadedModels.push_back(newModel);
 }

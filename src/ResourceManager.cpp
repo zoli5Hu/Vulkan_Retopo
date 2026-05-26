@@ -23,7 +23,7 @@ void ResourceManager::loadModel(const std::string &filename, std::vector<Vertex>
     std::vector<tinyobj::material_t> materials;
     std::string warn, err;
 
-    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "modells/kocka.obj")) {
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str())) {
         throw std::runtime_error(warn + err);
     }
 

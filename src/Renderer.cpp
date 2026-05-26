@@ -148,7 +148,8 @@ void Renderer::createCommandBuffers() {
 }
 //teljes render pass folyamat leindítása bekötjük a
 //render pass-t , pipelinet , vertex buffert háromszög kirajzolása , renderpass vége
-void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Pipeline* pipeline, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t indexCount, VkDescriptorSet descriptorSet) {
+// MÓDOSÍTVA: A paraméterek között most már a "const std::vector<ModelData>& models" szerepel!
+void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Pipeline* pipeline, const std::vector<ModelData>& models, VkDescriptorSet descriptorSet) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -163,38 +164,39 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = vulkanContext->swapChainExtent;
 
-    //kép letörlése felül írja egy másik szinnel
     std::array<VkClearValue, 2> clearValues{};
     clearValues[0].color = {{0.01f, 0.01f, 0.01f, 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
 
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
-    //elindítja a render passt
+
+    // Elindítja a render passt
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    //hozzákötjük a pipelinet
+
+    // VISSZATETTÜK: Hozzákötjük a pipelinet (ezt véletlenül kitörölted!)
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
 
-    VkBuffer vertexBuffers[] = {vertexBuffer};
-    VkDeviceSize offsets[] = {0};
-    //vertexek bekötése
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-    //a vertexek indexének bekötése
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-
-    // A Kamera (DescriptorSet) bekötése
+    // Kamera bekötése (ezt elég egyszer, a ciklus előtt!)
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
 
-    // Rajzolás!
-    vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
+    // ÚJ: Végigmegyünk az összes betöltött modellen, és kirajzoljuk őket
+    for (const auto& model : models) {
+        VkBuffer vertexBuffers[] = {model.vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, model.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+        // Rajzolás!
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model.indices.size()), 1, 0, 0, 0);
+    }
 
     vkCmdEndRenderPass(commandBuffer);
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
     }
-}
-//synkornizációért felelős
+}//synkornizációért felelős
 //megvárju kamíg a gpu végez egy feladattla utána küldjük tovább a cpunak és közben egyszerre dolgoznak más képeken
 void Renderer::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -221,8 +223,8 @@ void Renderer::createSyncObjects() {
     }
 }
 //framek kirajzolása a képernyőre
-void Renderer::drawFrame(Pipeline *pipeline, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t indexCount,
-                         VkDescriptorSet descriptorSet) {
+// MÓDOSÍTVA: Itt is a "const std::vector<ModelData>& models" szerepel bemenetként!
+void Renderer::drawFrame(Pipeline *pipeline, const std::vector<ModelData>& models, VkDescriptorSet descriptorSet) {
     //sync
     vkWaitForFences(vulkanContext->device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     vkResetFences(vulkanContext->device, 1, &inFlightFences[currentFrame]);
@@ -233,9 +235,8 @@ void Renderer::drawFrame(Pipeline *pipeline, VkBuffer vertexBuffer, VkBuffer ind
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
-    // Itt történik a varázslat: ráküldjük az összes memóriát és a csomagot a teherautóra
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex, pipeline, vertexBuffer, indexBuffer, indexCount,
-                        descriptorSet);
+    // Itt történik a varázslat: ráküldjük a MODELLEK LISTÁJÁT a teherautóra
+    recordCommandBuffer(commandBuffers[currentFrame], imageIndex, pipeline, models, descriptorSet);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;

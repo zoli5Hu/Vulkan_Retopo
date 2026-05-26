@@ -20,6 +20,7 @@ struct UniformBufferObject {
     glm::mat4 proj;
 };
 
+
 class RetopoApp {
 public:
     void run();
@@ -30,9 +31,8 @@ private:
 
     //vertex adatok objből
     std::vector<Vertex> vertices;
-    //index buffer hogy a vertexek ne duplikáltan legyenek benne
-    std::vector<uint32_t> indices;
-
+    // ÚJ: A betöltött modellek listája
+    std::vector<ModelData> loadedModels;
     // --- A Három Fő Modulunk! ---
     //komunikációt teszi lehetővé a vulkan apival
     std::unique_ptr<VulkanContext> vulkanContext;
@@ -78,15 +78,11 @@ private:
     //shader futószalag adatai
     std::unique_ptr<Pipeline> graphicsPipeline;
 
-    // A logikai tartály (doboz), ami a vertexeket (3D pontokat) fogja tartalmazni
-    VkBuffer vertexBuffer;
     // A ténylegesen lefoglalt fizikai videómemória (VRAM), ami a fenti tartályhoz tartozik
     VkDeviceMemory vertexBufferMemory;
 
     // A logikai tartály, ami a csúcspontok összekötési sorrendjét (indexeket) tartalmazza
     VkBuffer indexBuffer;
-    // A tényleges fizikai videómemória (VRAM) az indexek számára
-    VkDeviceMemory indexBufferMemory;
     //shade szabványa a binding alapján
     VkDescriptorSetLayout descriptorSetLayout;
     //description setek lefoglal terület a többinek
@@ -112,4 +108,5 @@ private:
     void createDescriptorPool();
     void createDescriptorSets();
     void updateUniformBuffer(uint32_t currentFrame);
+    void loadNewModel(const std::string& filepath);
 };
