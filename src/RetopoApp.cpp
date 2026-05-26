@@ -273,9 +273,11 @@ void RetopoApp::scrollCallback(GLFWwindow* window, double xoffset, double yoffse
 }
 
 // Belső logika
+// Belső logika
+// Belső logika
 void RetopoApp::onMouseButton(int button, int action, int mods) {
-    // MIDDLE (Középső egérgomb / Görgő lenyomása) a forgatáshoz és eltoláshoz
-    if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+    // ÚJ: Elfogadjuk a Középső gombot (Windows egér) ÉS a Bal gombot (Mac Trackpad) is!
+    if (button == GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             // Ha nyomva van a Shift, akkor Panning (eltolás) módba lépünk
             if (mods & GLFW_MOD_SHIFT) {
@@ -290,7 +292,6 @@ void RetopoApp::onMouseButton(int button, int action, int mods) {
         }
     }
 }
-
 void RetopoApp::onCursorPos(double xpos, double ypos) {
     // Mennyit mozdult az egér/ujj az előző képkocka óta?
     float deltaX = static_cast<float>(xpos - lastMouseX);
