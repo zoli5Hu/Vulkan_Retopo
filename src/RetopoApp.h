@@ -53,6 +53,7 @@ private:
     bool isOrbiting = false;                              // Épp nyomva tartjuk-e a gombot
     double lastMouseX = 0.0;                              // Hol volt az egér az előző pillanatban
     double lastMouseY = 0.0;
+    bool isPanning = false;                              // Épp pánikálunk-e (elmozdítjuk a kamerát)
 
     // GLFW C-stílusú "lehallgató" (callback) függvényei
     static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);

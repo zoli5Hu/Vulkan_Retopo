@@ -27,6 +27,12 @@ void RetopoApp::initWindow() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     window = glfwCreateWindow(WIDTH, HEIGHT, "3D Retopo Tool", nullptr, nullptr);
+
+    // --- ÚJ: Bekötjük az egeret a GLFW-be ---
+    glfwSetWindowUserPointer(window, this); // Hogy a C kód lássa a C++ osztályunkat
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetCursorPosCallback(window, cursorPosCallback);
+    glfwSetScrollCallback(window, scrollCallback);
 }
 
 void RetopoApp::initVulkan() {
@@ -220,23 +226,25 @@ void RetopoApp::createDescriptorSets() {
 }
 
 //képváltozások kezelése memória szinten
+
+//képváltozások kezelése memória szinten (KAMERA MATEMATIKA)
 void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
     UniformBufferObject ubo{};
 
-    // 1. MODEL: Kivettük a forgást! A kocka most már nyugodtan áll a [0,0,0] pontban.
+    // 1. MODEL: Nincs több idő-alapú pörgés! A modellünk fixen áll a tér közepén.
     ubo.model = glm::mat4(1.0f);
 
-    // 2. VIEW: Kiszámoljuk, hol van a kamera a Gömbkoordináták (Yaw, Pitch, Radius) alapján
+    // 2. VIEW: Kiszámoljuk a Gömbkoordinátákból (Yaw, Pitch, Radius), hogy hol van a kamera
     float camX = cameraTarget.x + cameraRadius * cos(glm::radians(cameraPitch)) * cos(glm::radians(cameraYaw));
     float camY = cameraTarget.y + cameraRadius * cos(glm::radians(cameraPitch)) * sin(glm::radians(cameraYaw));
     float camZ = cameraTarget.z + cameraRadius * sin(glm::radians(cameraPitch));
 
     glm::vec3 cameraPos = glm::vec3(camX, camY, camZ);
 
-    // Beállítjuk a kamerát: (Honnan nézünk, Mit nézünk, Melyik a "Felfelé" irány)
+    // Kamera beállítása: (Kamera pozíciója, Mit nézünk, Merre van a "fent")
     ubo.view = glm::lookAt(cameraPos, cameraTarget, glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // 3. PROJ: A lencse torzítása (Ez marad a régi)
+    // 3. PROJ: A lencse torzítása
     ubo.proj = glm::perspective(glm::radians(45.0f),
                                 vulkanContext->swapChainExtent.width / (float) vulkanContext->swapChainExtent.height,
                                 0.1f, 10.0f);
@@ -266,42 +274,63 @@ void RetopoApp::scrollCallback(GLFWwindow* window, double xoffset, double yoffse
 
 // Belső logika
 void RetopoApp::onMouseButton(int button, int action, int mods) {
-    // Ha a bal TARTJUK lenyomva, akkor "keringünk" (orbit)
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+    // MIDDLE (Középső egérgomb / Görgő lenyomása) a forgatáshoz és eltoláshoz
+    if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
         if (action == GLFW_PRESS) {
-            isOrbiting = true;
+            // Ha nyomva van a Shift, akkor Panning (eltolás) módba lépünk
+            if (mods & GLFW_MOD_SHIFT) {
+                isPanning = true;
+            } else {
+                isOrbiting = true;
+            }
             glfwGetCursorPos(window, &lastMouseX, &lastMouseY); // Megjegyezzük, hol volt az egér kattintáskor
         } else if (action == GLFW_RELEASE) {
             isOrbiting = false;
+            isPanning = false; // Gomb felengedésekor leállítjuk
         }
     }
 }
 
 void RetopoApp::onCursorPos(double xpos, double ypos) {
-    if (isOrbiting) {
-        // Mennyit mozdult az egér az előző képkocka óta?
-        float deltaX = static_cast<float>(xpos - lastMouseX);
-        float deltaY = static_cast<float>(ypos - lastMouseY);
+    // Mennyit mozdult az egér/ujj az előző képkocka óta?
+    float deltaX = static_cast<float>(xpos - lastMouseX);
+    float deltaY = static_cast<float>(ypos - lastMouseY);
 
-        // Forgatás (Az egér érzékenysége itt 0.5f)
+    if (isOrbiting) {
+        // Sima forgás (Blender stílus)
         cameraYaw -= deltaX * 0.5f;
         cameraPitch += deltaY * 0.5f;
 
-        // "Satu": Ne tudjon a kamera átfordulni a feje tetejére (max 89 fok)
+        // "Satu": Ne tudjon a kamera átfordulni a feje tetejére
         if (cameraPitch > 89.0f) cameraPitch = 89.0f;
         if (cameraPitch < -89.0f) cameraPitch = -89.0f;
-
-        // Frissítjük a memóriát a következő körhöz
-        lastMouseX = xpos;
-        lastMouseY = ypos;
     }
+    else if (isPanning) {
+        // Nézet eltolása (Shift + Kattintás + Húzás)
+        float sensitivity = 0.002f * cameraRadius;
+
+        // Kiszámoljuk, merre van a kamera "jobbra" iránya a vízszintes forgás (Yaw) alapján
+        float radiansYaw = glm::radians(cameraYaw);
+        glm::vec3 cameraRight = glm::vec3(-sin(radiansYaw), cos(radiansYaw), 0.0f);
+
+        // A "felfelé" irányt a Z tengely adja
+        glm::vec3 cameraUp = glm::vec3(0.0f, 0.0f, 1.0f);
+
+        // Eltoljuk a fókuszpontot az egér mozgása alapján
+        cameraTarget += cameraRight * (-deltaX * sensitivity);
+        cameraTarget += cameraUp * (deltaY * sensitivity);
+    }
+
+    // Frissítjük a koordinátákat a következő körhöz
+    lastMouseX = xpos;
+    lastMouseY = ypos;
 }
 
 void RetopoApp::onScroll(double yoffset) {
     // Zoom in / Zoom out
     cameraRadius -= static_cast<float>(yoffset) * 0.5f;
 
-    // Biztonsági korlátok, hogy ne menjünk bele a kocka közepébe
+    // Biztonsági korlátok, hogy ne menjünk túl közel vagy túl távol
     if (cameraRadius < 0.5f) cameraRadius = 0.5f;
     if (cameraRadius > 20.0f) cameraRadius = 20.0f;
 }
