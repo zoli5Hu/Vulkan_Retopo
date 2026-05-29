@@ -4,6 +4,8 @@
 #include <iostream>
 #include <ostream>
 
+#include "imgui_impl_vulkan.h"
+
 Renderer::Renderer(VulkanContext* vulkanContext, VkImageView depthImageView, VkFormat depthFormat) {
     this->vulkanContext = vulkanContext;
     this->depthImageView = depthImageView;
@@ -191,6 +193,10 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         // Rajzolás!
         vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model.indices.size()), 1, 0, 0, 0);
     }
+    // --- ÚJ: IMGUI KIRAJZOLÁSA ---
+    // Ezt KÖTELEZŐ a modellek UTÁN, de a vkCmdEndRenderPass ELŐTT hívni!
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+
 
     vkCmdEndRenderPass(commandBuffer);
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {

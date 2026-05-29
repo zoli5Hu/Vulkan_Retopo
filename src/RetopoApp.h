@@ -55,6 +55,8 @@ private:
     double lastMouseY = 0.0;
     bool isPanning = false;                              // Épp pánikálunk-e (elmozdítjuk a kamerát)
 
+
+
     // GLFW C-stílusú "lehallgató" (callback) függvényei
     static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
     static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
@@ -109,4 +111,8 @@ private:
     void createDescriptorSets();
     void updateUniformBuffer(uint32_t currentFrame);
     void loadNewModel(const std::string& filepath);
+
+    // ÚJ: ImGui rendszerek
+    VkDescriptorPool imguiPool;
+    void initImGui();
 };

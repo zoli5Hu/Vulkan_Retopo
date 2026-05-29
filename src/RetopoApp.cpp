@@ -2,6 +2,9 @@
 #include <iostream>
 #include <stdexcept>
 #include <chrono>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "VulkanUtils.h"
@@ -67,6 +70,9 @@ void RetopoApp::initVulkan() {
             vulkanContext->swapChainExtent,
             descriptorSetLayout
         );
+
+    // 8. IMGUI INDÍTÁSA
+    initImGui();
 }
 
 //updater amíg be nem csukjuk
@@ -74,18 +80,39 @@ void RetopoApp::mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        // 1. Frissítjük a kamerát/forgást az adott képkockához
-        updateUniformBuffer(renderer->getCurrentFrame());
+        // --- 1. IMGUI ÚJ KÉPKOCKA INDÍTÁSA ---
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
-        // 2. Szólunk a Renderernek, hogy rajzolja ki az összes modellt
-        renderer->drawFrame(graphicsPipeline.get(), loadedModels, descriptorSets[renderer->getCurrentFrame()]);    }
-    //mindent megállít hogy nehogy töröljünk valamit amut a gpu még rajzol
+        // --- 2. A TE SAJÁT MENÜD ---
+        ImGui::Begin("Retopo Eszkozok"); // Ablak címe
+        ImGui::Text("Udv a 3D Retopo Tool-ban!"); // Sima szöveg
+
+        if (ImGui::Button("Teszt Gomb")) {        // Egy gomb
+            std::cout << "Megnyomtad a gombot a feluleten!" << std::endl;
+        }
+        ImGui::End();
+
+        // --- 3. IMGUI RAJZOLÁS ELŐKÉSZÍTÉSE ---
+        ImGui::Render();
+
+        // A régi 3D-s kódod marad:
+        updateUniformBuffer(renderer->getCurrentFrame());
+        renderer->drawFrame(graphicsPipeline.get(), loadedModels, descriptorSets[renderer->getCurrentFrame()]);
+    }
     vkDeviceWaitIdle(vulkanContext->device);
 }
-
 void RetopoApp::cleanup() {
     // semaphores leállítása, mielőtt törlünk
     vkDeviceWaitIdle(vulkanContext->device);
+
+    // --- ÚJ: ImGui leállítása és törlése ---
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    vkDestroyDescriptorPool(vulkanContext->device, imguiPool, nullptr);
+    // ---------------------------------------
 
     // 1. Végigmegyünk az összes betöltött modellen, és töröljük a memóriájukat
     for (auto& model : loadedModels) {
@@ -348,4 +375,68 @@ void RetopoApp::loadNewModel(const std::string& filepath) {
 
     // Hozzáadjuk a listánkhoz
     loadedModels.push_back(newModel);
+}
+
+// --- ÚJ: ImGui Rendszer Felállítása ---
+void RetopoApp::initImGui() {
+    // 1. Memóriamedence (Kibővített, univerzális ImGui Pool)
+    VkDescriptorPoolSize pool_sizes[] = {
+        { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+    };
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+
+    if (vkCreateDescriptorPool(vulkanContext->device, &pool_info, nullptr, &imguiPool) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult letrehozni az ImGui Descriptor Pool-t!");
+    }
+
+    // 2. Queue Family (Videókártya sora)
+    uint32_t graphicsFamily = 0;
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(vulkanContext->physicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(vulkanContext->physicalDevice, &queueFamilyCount, queueFamilies.data());
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            graphicsFamily = i; break;
+        }
+    }
+
+    // 3. ImGui Inicializálás
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
+    // 4. ImGui Vulkan struktúra összerakása
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = vulkanContext->instance;
+    init_info.PhysicalDevice = vulkanContext->physicalDevice;
+    init_info.Device = vulkanContext->device;
+    init_info.DescriptorPool = imguiPool;
+    init_info.QueueFamily = graphicsFamily;
+    init_info.Queue = vulkanContext->graphicsQueue;
+    init_info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
+    init_info.ImageCount = MAX_FRAMES_IN_FLIGHT;
+
+    // A legújabb 2026-os ImGui master ág beállításai
+    init_info.PipelineInfoMain.RenderPass = renderer->getRenderPass();
+    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    // 5. PONTOSAN EGY inicializáló hívás:
+    ImGui_ImplVulkan_Init(&init_info);
 }
