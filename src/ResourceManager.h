@@ -14,6 +14,7 @@ struct ModelData {
     VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
     VkBuffer indexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    bool isLoaded = false;
 };
 
 class ResourceManager {

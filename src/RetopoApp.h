@@ -99,6 +99,16 @@ private:
     //memória direkt felülírása
     std::vector<void*> uniformBuffersMapped;
 
+    // --- UI ÉS MODELL CSERE VÁLTOZÓI ---
+    char highPolyInput[256] = "modells/kocka.obj";
+    char lowPolyInput[256] = "modells/monkey.obj";
+
+    std::string highPolyName = "Nincs betoltve";
+    std::string lowPolyName = "Nincs betoltve";
+
+    // Az új, intelligens modell betöltő
+    void loadModelIntoSlot(int slot, const std::string& filepath, std::string& nameTracker);
+
     // --- Függvények ---
     void initWindow();
     void initVulkan();
@@ -115,4 +125,8 @@ private:
     // ÚJ: ImGui rendszerek
     VkDescriptorPool imguiPool;
     void initImGui();
+
+
+    // Ezt a régit KITÖRÖLHETED (vagy kommentezd ki):
+    // void loadNewModel(const std::string& filepath);
 };

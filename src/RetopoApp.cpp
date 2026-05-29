@@ -52,9 +52,8 @@ void RetopoApp::initVulkan() {
     // 4. RAJZOLÓ (Renderer) ELINDÍTÁSA
     renderer = std::make_unique<Renderer>(vulkanContext.get(), depthImageView, depthFormat);
 
-    // 5. GEOMETRIA BETÖLTÉSE
-    loadNewModel("modells/kocka.obj");
-    loadNewModel("modells/monkey.obj"); // <--- Még egy betöltése!
+    // 5. GEOMETRIA BETÖLTÉSE (Induláskor csak csinálunk 2 üres helyet)
+    loadedModels.resize(2);
     // 6. KAMERA RENDSZER
     createDescriptorSetLayout();
     createUniformBuffers();
@@ -86,15 +85,31 @@ void RetopoApp::mainLoop() {
         ImGui::NewFrame();
 
         // --- 2. A TE SAJÁT MENÜD ---
-        ImGui::Begin("Retopo Eszkozok"); // Ablak címe
-        ImGui::Text("Udv a 3D Retopo Tool-ban!"); // Sima szöveg
+        ImGui::Begin("Retopo Eszkozok");
 
-        if (ImGui::Button("Teszt Gomb")) {        // Egy gomb
-            std::cout << "Megnyomtad a gombot a feluleten!" << std::endl;
+        // 1. Gomb: HIGH POLY
+        ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.0f, 1.0f), "HIGH POLY (Eredeti Modell)");
+        ImGui::Text("Fajl: %s", highPolyName.c_str());
+        ImGui::InputText("##hp_input", highPolyInput, 256); // Szövegdoboz
+        ImGui::SameLine();
+        if (ImGui::Button("Betoltes##hp")) {
+            loadModelIntoSlot(0, highPolyInput, highPolyName);
         }
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 2. Gomb: LOW POLY
+        ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "LOW POLY (Szerkesztett)");
+        ImGui::Text("Fajl: %s", lowPolyName.c_str());
+        ImGui::InputText("##lp_input", lowPolyInput, 256); // Szövegdoboz
+        ImGui::SameLine();
+        if (ImGui::Button("Betoltes##lp")) {
+            loadModelIntoSlot(1, lowPolyInput, lowPolyName);
+        }
+
         ImGui::End();
 
-        // --- 3. IMGUI RAJZOLÁS ELŐKÉSZÍTÉSE ---
         ImGui::Render();
 
         // A régi 3D-s kódod marad:
@@ -114,15 +129,16 @@ void RetopoApp::cleanup() {
     vkDestroyDescriptorPool(vulkanContext->device, imguiPool, nullptr);
     // ---------------------------------------
 
-    // 1. Végigmegyünk az összes betöltött modellen, és töröljük a memóriájukat
+    // 1. Végigmegyünk a slotokon, és ha van bennük valami, töröljük a GPU-ról
     for (auto& model : loadedModels) {
-        vkDestroyBuffer(vulkanContext->device, model.indexBuffer, nullptr);
-        vkFreeMemory(vulkanContext->device, model.indexBufferMemory, nullptr);
-        vkDestroyBuffer(vulkanContext->device, model.vertexBuffer, nullptr);
-        vkFreeMemory(vulkanContext->device, model.vertexBufferMemory, nullptr);
+        if (model.isLoaded) { // Csak azt töröljük, ami létezik!
+            vkDestroyBuffer(vulkanContext->device, model.indexBuffer, nullptr);
+            vkFreeMemory(vulkanContext->device, model.indexBufferMemory, nullptr);
+            vkDestroyBuffer(vulkanContext->device, model.vertexBuffer, nullptr);
+            vkFreeMemory(vulkanContext->device, model.vertexBufferMemory, nullptr);
+        }
     }
     loadedModels.clear();
-
     // === INNEN KITÖRÖLTÜK A HIBÁS 4 SORT! ===
 
     //processzor és videókártya kzött kapcsolat felszabdítása
@@ -439,4 +455,40 @@ void RetopoApp::initImGui() {
 
     // 5. PONTOSAN EGY inicializáló hívás:
     ImGui_ImplVulkan_Init(&init_info);
+}
+
+// --- ÚJ: Intelligens Modell Cserélő Logika ---
+// --- ÚJ: Intelligens Modell Cserélő Logika ---
+void RetopoApp::loadModelIntoSlot(int slot, const std::string& filepath, std::string& nameTracker) {
+    // 1. Megvárjuk, míg a videókártya befejezi a rajzolást
+    vkDeviceWaitIdle(vulkanContext->device);
+
+    // 2. Ha eddig volt ott modell, kiürítjük a GPU memóriát
+    if (loadedModels[slot].isLoaded) {
+        vkDestroyBuffer(vulkanContext->device, loadedModels[slot].indexBuffer, nullptr);
+        vkFreeMemory(vulkanContext->device, loadedModels[slot].indexBufferMemory, nullptr);
+        vkDestroyBuffer(vulkanContext->device, loadedModels[slot].vertexBuffer, nullptr);
+        vkFreeMemory(vulkanContext->device, loadedModels[slot].vertexBufferMemory, nullptr);
+
+        loadedModels[slot].vertices.clear();
+        loadedModels[slot].indices.clear();
+        loadedModels[slot].isLoaded = false;
+    }
+
+    // 3. Betöltjük a teljesen újat a felszabadított helyre
+    try {
+        resourceManager->loadModel(filepath, loadedModels[slot].vertices, loadedModels[slot].indices);
+        resourceManager->createVertexBuffer(loadedModels[slot].vertexBuffer, loadedModels[slot].vertexBufferMemory, loadedModels[slot].vertices);
+        resourceManager->createIndexBuffer(loadedModels[slot].indexBuffer, loadedModels[slot].indexBufferMemory, loadedModels[slot].indices);
+
+        loadedModels[slot].isLoaded = true;
+
+        // Csak a fájlnevet tartjuk meg a kiíráshoz (levágjuk a mappákat előle)
+        size_t pos = filepath.find_last_of("/\\");
+        nameTracker = (pos != std::string::npos) ? filepath.substr(pos + 1) : filepath;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Hiba a modell betoltesekor: " << e.what() << std::endl;
+        nameTracker = "Hibas fajl!";
+    }
 }

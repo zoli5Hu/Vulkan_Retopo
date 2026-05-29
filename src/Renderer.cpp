@@ -176,33 +176,49 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // Elindítja a render passt
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    // VISSZATETTÜK: Hozzákötjük a pipelinet (ezt véletlenül kitörölted!)
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
-
-    // Kamera bekötése (ezt elég egyszer, a ciklus előtt!)
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
-
-    // ÚJ: Végigmegyünk az összes betöltött modellen, és kirajzoljuk őket
+    // --- ÚJ: BIZTONSÁGI ELLENŐRZÉS MAC GPU-KHOZ ---
+    // Megnézzük, van-e egyáltalán betöltött modell a fiókokban
+    bool hasLoadedModel = false;
     for (const auto& model : models) {
-        VkBuffer vertexBuffers[] = {model.vertexBuffer};
-        VkDeviceSize offsets[] = {0};
-
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindIndexBuffer(commandBuffer, model.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-        // Rajzolás!
-        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model.indices.size()), 1, 0, 0, 0);
+        if (model.isLoaded) {
+            hasLoadedModel = true;
+            break;
+        }
     }
+
+    // Csak akkor kötjük be a 3D-s motorunkat, ha van is mit rajzolni!
+    if (hasLoadedModel) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
+
+        for (const auto& model : models) {
+            if (!model.isLoaded) continue;
+
+            VkBuffer vertexBuffers[] = {model.vertexBuffer};
+            VkDeviceSize offsets[] = {0};
+
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            vkCmdBindIndexBuffer(commandBuffer, model.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+            // Rajzolás!
+            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(model.indices.size()), 1, 0, 0, 0);
+        }
+    }
+
+
     // --- ÚJ: IMGUI KIRAJZOLÁSA ---
-    // Ezt KÖTELEZŐ a modellek UTÁN, de a vkCmdEndRenderPass ELŐTT hívni!
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
-
     vkCmdEndRenderPass(commandBuffer);
+
+    // KÖTELEZŐ LEZÁRNI A PARANCSLISTÁT!
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult befejezni a Command Buffer rogziteset!");
     }
-}//synkornizációért felelős
+} // <--- Itt
+
+
+//synkornizációért felelős
 //megvárju kamíg a gpu végez egy feladattla utána küldjük tovább a cpunak és közben egyszerre dolgoznak más képeken
 void Renderer::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -231,14 +247,24 @@ void Renderer::createSyncObjects() {
 //framek kirajzolása a képernyőre
 // MÓDOSÍTVA: Itt is a "const std::vector<ModelData>& models" szerepel bemenetként!
 void Renderer::drawFrame(Pipeline *pipeline, const std::vector<ModelData>& models, VkDescriptorSet descriptorSet) {
-    //sync
+    // 1. Megvárjuk, míg az előző képkocka befejeződik
     vkWaitForFences(vulkanContext->device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-    vkResetFences(vulkanContext->device, 1, &inFlightFences[currentFrame]);
 
-    uint32_t imageIndex;
-    vkAcquireNextImageKHR(vulkanContext->device, vulkanContext->swapChain, UINT64_MAX,
+    // 2. Kép elkérése (KÖTELEZŐ = 0 kezdőértékkel!)
+    uint32_t imageIndex = 0;
+    VkResult result = vkAcquireNextImageKHR(vulkanContext->device, vulkanContext->swapChain, UINT64_MAX,
                           imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
+    // --- ÚJ: BIZTONSÁGI ELLENŐRZÉS MAC-RE ---
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        // Ha az ablak mérete változott, vagy a Mac még "gondolkozik", átugorjuk ezt a képkockát fagyás helyett!
+        return;
+    } else if (result != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Nem sikerult kepet szerezni a Swap Chain-bol!");
+    }
+
+    // 3. CSAK AKKOR zárjuk le a kerítést, ha tényleg rajzolni is fogunk!
+    vkResetFences(vulkanContext->device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
     // Itt történik a varázslat: ráküldjük a MODELLEK LISTÁJÁT a teherautóra
