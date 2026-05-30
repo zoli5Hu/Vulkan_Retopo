@@ -129,6 +129,7 @@ add_executable(VulkanTests
         src/Renderer.cpp
         src/ResourceManager.cpp
         src/VulkanUtils.cpp
+        ${IMGUI_SOURCES}
 )
 
 # Mappák, amiket a tesztelő láthat (A saját src mappád + Vulkan + ImGui)
