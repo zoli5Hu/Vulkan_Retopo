@@ -7,6 +7,7 @@
 #include <imgui_impl_vulkan.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "nfd.hpp"
 #include "VulkanUtils.h"
 
 //képernyő adatainak inicializálása
@@ -72,10 +73,17 @@ void RetopoApp::initVulkan() {
 
     // 8. IMGUI INDÍTÁSA
     initImGui();
+
+    // --- ÚJ: Fájl tallózó elindítása ---
+    NFD::Init();
 }
 
 //updater amíg be nem csukjuk
 void RetopoApp::mainLoop() {
+    // --- ÚJ: Kapcsolók a fájlkezelő ablakokhoz ---
+    bool openHighPolyDialog = false;
+    bool openLowPolyDialog = false;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -90,10 +98,9 @@ void RetopoApp::mainLoop() {
         // 1. Gomb: HIGH POLY
         ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.0f, 1.0f), "HIGH POLY (Eredeti Modell)");
         ImGui::Text("Fajl: %s", highPolyName.c_str());
-        ImGui::InputText("##hp_input", highPolyInput, 256); // Szövegdoboz
-        ImGui::SameLine();
-        if (ImGui::Button("Betoltes##hp")) {
-            loadModelIntoSlot(0, highPolyInput, highPolyName);
+
+        if (ImGui::Button("Fajl Kivalasztasa...##hp")) {
+            openHighPolyDialog = true; // Csak felkapcsoljuk a jelet! Ne itt nyissuk meg!
         }
 
         ImGui::Separator();
@@ -102,20 +109,46 @@ void RetopoApp::mainLoop() {
         // 2. Gomb: LOW POLY
         ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "LOW POLY (Szerkesztett)");
         ImGui::Text("Fajl: %s", lowPolyName.c_str());
-        ImGui::InputText("##lp_input", lowPolyInput, 256); // Szövegdoboz
-        ImGui::SameLine();
-        if (ImGui::Button("Betoltes##lp")) {
-            loadModelIntoSlot(1, lowPolyInput, lowPolyName);
+
+        if (ImGui::Button("Fajl Kivalasztasa...##lp")) {
+            openLowPolyDialog = true; // Csak felkapcsoljuk a jelet!
         }
 
         ImGui::End();
 
-        ImGui::Render();
+        // --- 3. IMGUI MENÜ LEZÁRÁSA ---
+        ImGui::Render(); // Itt az ImGui szabályosan befejezi a gombok kezelését
 
-        // A régi 3D-s kódod marad:
+        // --- 4. FÁJLKEZELŐ ABLAKOK MEGNYITÁSA (A menü lezárása után!) ---
+        if (openHighPolyDialog) {
+            NFD::UniquePath outPath;
+            nfdfilteritem_t filterItem[1] = { { "OBJ Modellek", "obj" } };
+            if (NFD::OpenDialog(outPath, filterItem, 1) == NFD_OKAY) {
+                loadModelIntoSlot(0, outPath.get(), highPolyName);
+            }
+            openHighPolyDialog = false; // Visszakapcsoljuk
+
+            // BIZTOSÍTÉK: Kézzel szólunk az ImGui-nak, hogy a kattintás véget ért!
+            ImGui::GetIO().MouseDown[0] = false;
+        }
+
+        if (openLowPolyDialog) {
+            NFD::UniquePath outPath;
+            nfdfilteritem_t filterItem[1] = { { "OBJ Modellek", "obj" } };
+            if (NFD::OpenDialog(outPath, filterItem, 1) == NFD_OKAY) {
+                loadModelIntoSlot(1, outPath.get(), lowPolyName);
+            }
+            openLowPolyDialog = false;
+
+            // BIZTOSÍTÉK
+            ImGui::GetIO().MouseDown[0] = false;
+        }
+
+        // --- 5. VULKAN RAJZOLÁS ---
         updateUniformBuffer(renderer->getCurrentFrame());
         renderer->drawFrame(graphicsPipeline.get(), loadedModels, descriptorSets[renderer->getCurrentFrame()]);
     }
+
     vkDeviceWaitIdle(vulkanContext->device);
 }
 void RetopoApp::cleanup() {
@@ -160,7 +193,8 @@ void RetopoApp::cleanup() {
     resourceManager.reset();
     vulkanContext.reset();   // <--- Itt törlődik a device és az instance
 
-    // 3. Ablak törlése
+    // 3. Ablak és modulok törlése
+    NFD::Quit(); // <--- ÚJ: Fájl tallózó leállítása
     glfwDestroyWindow(window);
     glfwTerminate();
 }
@@ -320,6 +354,8 @@ void RetopoApp::scrollCallback(GLFWwindow* window, double xoffset, double yoffse
 // Belső logika
 // Belső logika
 void RetopoApp::onMouseButton(int button, int action, int mods) {
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse) return; // <--- EZ A KULCS!
     // ÚJ: Elfogadjuk a Középső gombot (Windows egér) ÉS a Bal gombot (Mac Trackpad) is!
     if (button == GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
@@ -338,6 +374,9 @@ void RetopoApp::onMouseButton(int button, int action, int mods) {
 }
 void RetopoApp::onCursorPos(double xpos, double ypos) {
     // Mennyit mozdult az egér/ujj az előző képkocka óta?
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse) return; // <--- Ha a menün vagy, a kamera ne mozduljon!
+
     float deltaX = static_cast<float>(xpos - lastMouseX);
     float deltaY = static_cast<float>(ypos - lastMouseY);
 
@@ -372,6 +411,8 @@ void RetopoApp::onCursorPos(double xpos, double ypos) {
 }
 
 void RetopoApp::onScroll(double yoffset) {
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse) return; // <--- Ha a menün vagy, ne zoomoljon!
     // Zoom in / Zoom out
     cameraRadius -= static_cast<float>(yoffset) * 0.5f;
 
