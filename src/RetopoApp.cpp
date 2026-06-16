@@ -10,58 +10,66 @@
 #include "nfd.hpp"
 #include "VulkanUtils.h"
 
-//képernyő adatainak inicializálása
+// Képernyő alapértelmezett felbontása
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
+/**
+ * @brief Az alkalmazás fő életciklusa.
+ * Sorrendben inicializálja az ablakot, a Vulkant, futtatja a fő ciklust, majd a végén takarít.
+ */
 void RetopoApp::run() {
-    //ablakot indító
     initWindow();
-    //vulkannal való kommunikációt indítő
     initVulkan();
-    //frissítő
     mainLoop();
-    //memória fleszabadítás
     cleanup();
 }
 
-//ablak létrehozása
+/**
+ * @brief Létrehozza a platformfüggetlen ablakot a GLFW segítségével.
+ * Inicializálja az egér eseménykezelőit (Callback-ek), és összeköti a C-típusú GLFW
+ * ablakot az objektumorientált C++ osztállyal (UserPointer).
+ */
 void RetopoApp::initWindow() {
     glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Nem kérünk OpenGL kontextust, mert Vulkant használunk
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);   // Egyelőre fix méretű ablak
     window = glfwCreateWindow(WIDTH, HEIGHT, "3D Retopo Tool", nullptr, nullptr);
 
-    // --- ÚJ: Bekötjük az egeret a GLFW-be ---
-    glfwSetWindowUserPointer(window, this); // Hogy a C kód lássa a C++ osztályunkat
+    // Összekötjük az ablakot ezzel az osztálypéldánnyal (this), hogy a statikus függvények elérjék a tagváltozókat
+    glfwSetWindowUserPointer(window, this);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetScrollCallback(window, scrollCallback);
 }
 
+/**
+ * @brief Felépíti a teljes Vulkan grafikus motort és a külső könyvtárakat (ImGui, NFD).
+ */
 void RetopoApp::initVulkan() {
-    // 1. ALAPOZÁS (Ablak és Vulkan)
+    // 1. Alaprendszer (Instance, Device, Swapchain)
     vulkanContext = std::make_unique<VulkanContext>(window);
 
-    // 2. ERŐFORRÁS MENEDZSER
+    // 2. Memóriakezelő (Modellek és Bufferek)
     resourceManager = std::make_unique<ResourceManager>(vulkanContext->device, vulkanContext->physicalDevice);
 
-    // 3. Z-BUFFER KÉSZÍTÉSE
+    // 3. Mélységi teszt (Z-Buffer) a 3D takarásokhoz
     VkFormat depthFormat = VulkanUtils::findDepthFormat(vulkanContext->physicalDevice);
     resourceManager->createDepthResources(vulkanContext->swapChainExtent, depthFormat, depthImage, depthImageMemory, depthImageView);
 
-    // 4. RAJZOLÓ (Renderer) ELINDÍTÁSA
+    // 4. Rajzoló mester (Renderer) elindítása
     renderer = std::make_unique<Renderer>(vulkanContext.get(), depthImageView, depthFormat);
 
-    // 5. GEOMETRIA BETÖLTÉSE (Induláskor csak csinálunk 2 üres helyet)
+    // 5. Két üres "fiók" (slot) lefoglalása a High Poly és Low Poly modelleknek
     loadedModels.resize(2);
-    // 6. KAMERA RENDSZER
+
+    // 6. Kamera és transzformációs adatok (UBO) előkészítése
     createDescriptorSetLayout();
     createUniformBuffers();
     createDescriptorPool();
     createDescriptorSets();
 
-    // 7. SHADEREK ÉS TERVRAJZ (Pipeline)
+    // 7. A grafikus futószalag (Shaderek és beállítások) összerakása
     graphicsPipeline = std::make_unique<Pipeline>(
             vulkanContext->device,
             "shaders/vert.spv",
@@ -71,16 +79,18 @@ void RetopoApp::initVulkan() {
             descriptorSetLayout
         );
 
-    // 8. IMGUI INDÍTÁSA
+    // 8. Felhasználói felület (UI) rendszereinek indítása
     initImGui();
-
-    // --- ÚJ: Fájl tallózó elindítása ---
-    NFD::Init();
+    NFD::Init(); // Natív fájltallózó inicializálása
 }
 
-//updater amíg be nem csukjuk
+/**
+ * @brief A program fő futási ciklusa (Game Loop).
+ * * Frissíti az ablak eseményeit, kezeli a UI (ImGui) rajzolását és logikáját,
+ * felügyeli a fájlműveleteket, majd kiküldi a rajzolási parancsot a Vulkan Renderernek.
+ */
 void RetopoApp::mainLoop() {
-    // --- ÚJ: Kapcsolók a fájlkezelő ablakokhoz ---
+    // Állapotjelzők a fájlkezelő aszinkron megnyitásához
     bool openHighPolyDialog = false;
     bool openLowPolyDialog = false;
 
@@ -92,44 +102,41 @@ void RetopoApp::mainLoop() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // --- 2. A TE SAJÁT MENÜD ---
+        // --- 2. FELHASZNÁLÓI FELÜLET (UI) DEFINIÁLÁSA ---
         ImGui::Begin("Retopo Eszkozok");
 
-        // 1. Gomb: HIGH POLY
+        // High Poly szekció
         ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.0f, 1.0f), "HIGH POLY (Eredeti Modell)");
         ImGui::Text("Fajl: %s", highPolyName.c_str());
-
         if (ImGui::Button("Fajl Kivalasztasa...##hp")) {
-            openHighPolyDialog = true; // Csak felkapcsoljuk a jelet! Ne itt nyissuk meg!
+            openHighPolyDialog = true; // Csak felkapcsoljuk a jelet, itt még nem blokkoljuk a programot!
         }
 
         ImGui::Separator();
         ImGui::Spacing();
 
-        // 2. Gomb: LOW POLY
+        // Low Poly szekció
         ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "LOW POLY (Szerkesztett)");
         ImGui::Text("Fajl: %s", lowPolyName.c_str());
-
         if (ImGui::Button("Fajl Kivalasztasa...##lp")) {
-            openLowPolyDialog = true; // Csak felkapcsoljuk a jelet!
+            openLowPolyDialog = true;
         }
 
         ImGui::End();
 
-        // --- 3. IMGUI MENÜ LEZÁRÁSA ---
-        ImGui::Render(); // Itt az ImGui szabályosan befejezi a gombok kezelését
+        // --- 3. IMGUI ADATOK VÉGLEGESÍTÉSE ---
+        ImGui::Render();
 
-        // --- 4. FÁJLKEZELŐ ABLAKOK MEGNYITÁSA (A menü lezárása után!) ---
+        // --- 4. FÁJLTALLÓZÓK KEZELÉSE ---
+        // Fontos: Ezt a UI renderelés után kell meghívni, hogy az ablak megnyitása ne fagyassza ki a grafikus motort.
         if (openHighPolyDialog) {
             NFD::UniquePath outPath;
             nfdfilteritem_t filterItem[1] = { { "OBJ Modellek", "obj" } };
             if (NFD::OpenDialog(outPath, filterItem, 1) == NFD_OKAY) {
                 loadModelIntoSlot(0, outPath.get(), highPolyName);
             }
-            openHighPolyDialog = false; // Visszakapcsoljuk
-
-            // BIZTOSÍTÉK: Kézzel szólunk az ImGui-nak, hogy a kattintás véget ért!
-            ImGui::GetIO().MouseDown[0] = false;
+            openHighPolyDialog = false;
+            ImGui::GetIO().MouseDown[0] = false; // Biztosíték az ImGui kattintás-beragadás ellen
         }
 
         if (openLowPolyDialog) {
@@ -139,32 +146,35 @@ void RetopoApp::mainLoop() {
                 loadModelIntoSlot(1, outPath.get(), lowPolyName);
             }
             openLowPolyDialog = false;
-
-            // BIZTOSÍTÉK
             ImGui::GetIO().MouseDown[0] = false;
         }
 
-        // --- 5. VULKAN RAJZOLÁS ---
+        // --- 5. KAMERA ÉS VULKAN RAJZOLÁS ---
         updateUniformBuffer(renderer->getCurrentFrame());
         renderer->drawFrame(graphicsPipeline.get(), loadedModels, descriptorSets[renderer->getCurrentFrame()]);
     }
 
+    // Megvárjuk, amíg a GPU befejezi a munkát, mielőtt kilépünk a ciklusból
     vkDeviceWaitIdle(vulkanContext->device);
 }
+
+/**
+ * @brief Memória felszabadítás szigorú fordított sorrendben.
+ * Ha nem várunk a GPU leállására, vagy rossz sorrendben törlünk (pl. eldobom a memóriát, de még
+ * rajta van egy textúra), a Vulkan azonnal Segmentation Fault hibát dob.
+ */
 void RetopoApp::cleanup() {
-    // semaphores leállítása, mielőtt törlünk
     vkDeviceWaitIdle(vulkanContext->device);
 
-    // --- ÚJ: ImGui leállítása és törlése ---
+    // 1. ImGui leállítása
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
     vkDestroyDescriptorPool(vulkanContext->device, imguiPool, nullptr);
-    // ---------------------------------------
 
-    // 1. Végigmegyünk a slotokon, és ha van bennük valami, töröljük a GPU-ról
+    // 2. Betöltött modellek és GPU memóriáik felszabadítása
     for (auto& model : loadedModels) {
-        if (model.isLoaded) { // Csak azt töröljük, ami létezik!
+        if (model.isLoaded) {
             vkDestroyBuffer(vulkanContext->device, model.indexBuffer, nullptr);
             vkFreeMemory(vulkanContext->device, model.indexBufferMemory, nullptr);
             vkDestroyBuffer(vulkanContext->device, model.vertexBuffer, nullptr);
@@ -172,39 +182,43 @@ void RetopoApp::cleanup() {
         }
     }
     loadedModels.clear();
-    // === INNEN KITÖRÖLTÜK A HIBÁS 4 SORT! ===
 
-    //processzor és videókártya kzött kapcsolat felszabdítása
+    // 3. Kamera adatok (UBO) törlése
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroyBuffer(vulkanContext->device, uniformBuffers[i], nullptr);
         vkFreeMemory(vulkanContext->device, uniformBuffersMemory[i], nullptr);
     }
-    //shader kapcsolódások törlése
+
     vkDestroyDescriptorPool(vulkanContext->device, descriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(vulkanContext->device, descriptorSetLayout, nullptr);
-    //magát a képet és a lancsét is felszabadítjuk
+
+    // 4. Z-Buffer törlése
     vkDestroyImageView(vulkanContext->device, depthImageView, nullptr);
     vkDestroyImage(vulkanContext->device, depthImage, nullptr);
     vkFreeMemory(vulkanContext->device, depthImageMemory, nullptr);
 
-    // 2. Modulok törlése KÖTELEZŐ SORRENDBEN (Tetőtől az alapokig)
+    // 5. Fő modulok törlése (Az okos mutatók /std::unique_ptr/ meghívják a destruktoraikat)
     graphicsPipeline.reset();
-    renderer.reset();        // <--- Itt törlődnek a framebufferek és a command pool automatikusan!
+    renderer.reset();
     resourceManager.reset();
-    vulkanContext.reset();   // <--- Itt törlődik a device és az instance
+    vulkanContext.reset();
 
-    // 3. Ablak és modulok törlése
-    NFD::Quit(); // <--- ÚJ: Fájl tallózó leállítása
+    // 6. Rendszerszintű ablakkezelők leállítása
+    NFD::Quit();
     glfwDestroyWindow(window);
     glfwTerminate();
 }
-//megadja a shader layout bindolást megnézi millyen típús buffer kell
+
+/**
+ * @brief Létrehozza a Descriptor Set Layout-ot.
+ * Ez határozza meg a Shader számára, hogy milyen memóriablokkokra (pl. Uniform Bufferek) számíthat.
+ */
 void RetopoApp::createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // A Vertex Shaderben használjuk (kamera transzformáció)
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -216,7 +230,10 @@ void RetopoApp::createDescriptorSetLayout() {
     }
 }
 
-//Buffer létrehozása a folyamatosan változó kamera- és 3D mátrixoknak
+/**
+ * @brief Lefoglalja a Uniform Buffer-eket (UBO), amelyek a kamera változó adatait továbbítják a GPU-nak.
+ * Minden aktív képkockához (MAX_FRAMES_IN_FLIGHT) külön puffer tartozik a párhuzamosítás érdekében.
+ */
 void RetopoApp::createUniformBuffers() {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
@@ -224,7 +241,6 @@ void RetopoApp::createUniformBuffers() {
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
-    //cpu és gpu oldalon is ofglalunk helyet hogy tudjanak külön működni
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -243,17 +259,19 @@ void RetopoApp::createUniformBuffers() {
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
         allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(vulkanContext->physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
         if (vkAllocateMemory(vulkanContext->device, &allocInfo, nullptr, &uniformBuffersMemory[i]) != VK_SUCCESS) {
             throw std::runtime_error("Hiba: Nem sikerult memoriat foglalni a Uniform Buffernek!");
         }
 
         vkBindBufferMemory(vulkanContext->device, uniformBuffers[i], uniformBuffersMemory[i], 0);
-
         vkMapMemory(vulkanContext->device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
     }
 }
 
-//descriptonseteknek előre lefoglal memória terület
+/**
+ * @brief Létrehozza a Descriptor Pool-t, amelyből a tényleges memóriakötéseket le lehet foglalni.
+ */
 void RetopoApp::createDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -270,7 +288,9 @@ void RetopoApp::createDescriptorPool() {
     }
 }
 
-//megadja a buffer címát a shadernek
+/**
+ * @brief Beköti a Uniform Buffereket a Shaderek számára (Descriptor Sets generálás).
+ */
 void RetopoApp::createDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -283,7 +303,7 @@ void RetopoApp::createDescriptorSets() {
     if (vkAllocateDescriptorSets(vulkanContext->device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult lefoglalni a Descriptor Set-eket!");
     }
-    //minden képnek amit előkészítünk fogallunk helyet
+
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffers[i];
@@ -303,32 +323,34 @@ void RetopoApp::createDescriptorSets() {
     }
 }
 
-//képváltozások kezelése memória szinten
-
-//képváltozások kezelése memória szinten (KAMERA MATEMATIKA)
+/**
+ * @brief Kiszámítja és feltölti a kameramátrixokat a GPU memóriába (minden képkockán lefut).
+ * Gömbkoordinátákat (Yaw, Pitch, Radius) alakít át Descartes-koordinátákra (X, Y, Z),
+ * ezáltal egy orbitális, fókuszpont körüli (Blender-szerű) kameramozgást tesz lehetővé.
+ */
 void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
     UniformBufferObject ubo{};
 
-    // 1. MODEL: Nincs több idő-alapú pörgés! A modellünk fixen áll a tér közepén.
+    // 1. Model Mátrix: Fixen tartja a modellt az origóban
     ubo.model = glm::mat4(1.0f);
 
-    // 2. VIEW: Kiszámoljuk a Gömbkoordinátákból (Yaw, Pitch, Radius), hogy hol van a kamera
+    // 2. View Mátrix: Kamera pozíciójának számítása gömbkoordinátákból
     float camX = cameraTarget.x + cameraRadius * cos(glm::radians(cameraPitch)) * cos(glm::radians(cameraYaw));
     float camY = cameraTarget.y + cameraRadius * cos(glm::radians(cameraPitch)) * sin(glm::radians(cameraYaw));
     float camZ = cameraTarget.z + cameraRadius * sin(glm::radians(cameraPitch));
 
     glm::vec3 cameraPos = glm::vec3(camX, camY, camZ);
-
-    // Kamera beállítása: (Kamera pozíciója, Mit nézünk, Merre van a "fent")
     ubo.view = glm::lookAt(cameraPos, cameraTarget, glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // 3. PROJ: A lencse torzítása
+    // 3. Projection Mátrix: Perspektivikus torzítás beállítása (45 fokos látószög)
     ubo.proj = glm::perspective(glm::radians(45.0f),
                                 vulkanContext->swapChainExtent.width / (float) vulkanContext->swapChainExtent.height,
                                 0.1f, 10.0f);
 
-    ubo.proj[1][1] *= -1; // A Vulkan Y-tengely korrekciója
+    // A Vulkan koordinátarendszere fordított az OpenGL-hez képest, így az Y tengelyt invertáljuk
+    ubo.proj[1][1] *= -1;
 
+    // Az adatok áttolása a CPU RAM-ból a leképezett GPU VRAM-ba
     memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }
 
@@ -336,7 +358,7 @@ void RetopoApp::updateUniformBuffer(uint32_t currentFrame) {
 // EGÉR KEZELŐ FÜGGVÉNYEK (BLENDER KAMERA)
 // =========================================================
 
-// Statikus hidak a GLFW (C nyelv) és az osztályunk (C++) között
+// Statikus hidak a C-alapú GLFW hívások és a C++ osztálypéldány között
 void RetopoApp::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     auto app = reinterpret_cast<RetopoApp*>(glfwGetWindowUserPointer(window));
     app->onMouseButton(button, action, mods);
@@ -350,93 +372,95 @@ void RetopoApp::scrollCallback(GLFWwindow* window, double xoffset, double yoffse
     app->onScroll(yoffset);
 }
 
-// Belső logika
-// Belső logika
-// Belső logika
+/**
+ * @brief Kezeli az egérgomb lenyomását. Dönt az Orbit (keringés) vagy a Pan (eltolás) módok között.
+ */
 void RetopoApp::onMouseButton(int button, int action, int mods) {
     ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse) return; // <--- EZ A KULCS!
-    // ÚJ: Elfogadjuk a Középső gombot (Windows egér) ÉS a Bal gombot (Mac Trackpad) is!
+    // Ha az egér a UI-on (menün) van, a kamera interakció blokkolása
+    if (io.WantCaptureMouse) return;
+
+    // Támogatja a középső (PC) és a bal (Mac Trackpad) gombot is
     if (button == GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
-            // Ha nyomva van a Shift, akkor Panning (eltolás) módba lépünk
             if (mods & GLFW_MOD_SHIFT) {
                 isPanning = true;
             } else {
                 isOrbiting = true;
             }
-            glfwGetCursorPos(window, &lastMouseX, &lastMouseY); // Megjegyezzük, hol volt az egér kattintáskor
+            // Kiinduló pozíció rögzítése
+            glfwGetCursorPos(window, &lastMouseX, &lastMouseY);
         } else if (action == GLFW_RELEASE) {
             isOrbiting = false;
-            isPanning = false; // Gomb felengedésekor leállítjuk
+            isPanning = false;
         }
     }
 }
+
+/**
+ * @brief Kezeli az egér mozgását, frissíti a kameraszögeket és a pozíciót.
+ */
 void RetopoApp::onCursorPos(double xpos, double ypos) {
-    // Mennyit mozdult az egér/ujj az előző képkocka óta?
     ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse) return; // <--- Ha a menün vagy, a kamera ne mozduljon!
+    if (io.WantCaptureMouse) return;
 
     float deltaX = static_cast<float>(xpos - lastMouseX);
     float deltaY = static_cast<float>(ypos - lastMouseY);
 
     if (isOrbiting) {
-        // Sima forgás (Blender stílus)
         cameraYaw -= deltaX * 0.5f;
         cameraPitch += deltaY * 0.5f;
 
-        // "Satu": Ne tudjon a kamera átfordulni a feje tetejére
+        // Gimbal Lock megelőzése szoftveres "satuval"
         if (cameraPitch > 89.0f) cameraPitch = 89.0f;
         if (cameraPitch < -89.0f) cameraPitch = -89.0f;
     }
     else if (isPanning) {
-        // Nézet eltolása (Shift + Kattintás + Húzás)
         float sensitivity = 0.002f * cameraRadius;
 
-        // Kiszámoljuk, merre van a kamera "jobbra" iránya a vízszintes forgás (Yaw) alapján
+        // Vízszintes és függőleges kameravektorok kiszámítása az eltoláshoz
         float radiansYaw = glm::radians(cameraYaw);
         glm::vec3 cameraRight = glm::vec3(-sin(radiansYaw), cos(radiansYaw), 0.0f);
-
-        // A "felfelé" irányt a Z tengely adja
         glm::vec3 cameraUp = glm::vec3(0.0f, 0.0f, 1.0f);
 
-        // Eltoljuk a fókuszpontot az egér mozgása alapján
         cameraTarget += cameraRight * (-deltaX * sensitivity);
         cameraTarget += cameraUp * (deltaY * sensitivity);
     }
 
-    // Frissítjük a koordinátákat a következő körhöz
     lastMouseX = xpos;
     lastMouseY = ypos;
 }
 
+/**
+ * @brief Egérgörgő kezelése a kamera fókuszpontjához való távolság (Radius) állításához (Zoom).
+ */
 void RetopoApp::onScroll(double yoffset) {
     ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse) return; // <--- Ha a menün vagy, ne zoomoljon!
-    // Zoom in / Zoom out
+    if (io.WantCaptureMouse) return;
+
     cameraRadius -= static_cast<float>(yoffset) * 0.5f;
 
-    // Biztonsági korlátok, hogy ne menjünk túl közel vagy túl távol
     if (cameraRadius < 0.5f) cameraRadius = 0.5f;
     if (cameraRadius > 20.0f) cameraRadius = 20.0f;
 }
 
+/**
+ * @brief Segédfüggvény egy egyszerű modell betöltésére (főleg inicializáláskor hasznos).
+ */
 void RetopoApp::loadNewModel(const std::string& filepath) {
     ModelData newModel{};
-
-    // Betöltjük az adatokat a fájlból
     resourceManager->loadModel(filepath, newModel.vertices, newModel.indices);
-    // Létrehozzuk hozzá a Vulkan buffereket
     resourceManager->createVertexBuffer(newModel.vertexBuffer, newModel.vertexBufferMemory, newModel.vertices);
     resourceManager->createIndexBuffer(newModel.indexBuffer, newModel.indexBufferMemory, newModel.indices);
-
-    // Hozzáadjuk a listánkhoz
     loadedModels.push_back(newModel);
 }
 
-// --- ÚJ: ImGui Rendszer Felállítása ---
+/**
+ * @brief Integrálja a "Dear ImGui" azonnali módú (Immediate Mode) grafikus felületet a Vulkanba.
+ * Létrehoz egy dedikált Descriptor Pool-t, és összeköti az ImGui belső állapotgépét a GLFW ablakkezelővel.
+ */
 void RetopoApp::initImGui() {
-    // 1. Memóriamedence (Kibővített, univerzális ImGui Pool)
+    // 1. Univerzális ImGui Pool (Minden memóriatípushoz elegendő hely lefoglalása)
     VkDescriptorPoolSize pool_sizes[] = {
         { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
@@ -462,7 +486,7 @@ void RetopoApp::initImGui() {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni az ImGui Descriptor Pool-t!");
     }
 
-    // 2. Queue Family (Videókártya sora)
+    // 2. Grafikus sor (Queue) megkeresése
     uint32_t graphicsFamily = 0;
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(vulkanContext->physicalDevice, &queueFamilyCount, nullptr);
@@ -474,12 +498,12 @@ void RetopoApp::initImGui() {
         }
     }
 
-    // 3. ImGui Inicializálás
+    // 3. Rendszer kontextus indítása
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplGlfw_InitForVulkan(window, true);
 
-    // 4. ImGui Vulkan struktúra összerakása
+    // 4. ImGui betöltési beállításai
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = vulkanContext->instance;
     init_info.PhysicalDevice = vulkanContext->physicalDevice;
@@ -489,22 +513,26 @@ void RetopoApp::initImGui() {
     init_info.Queue = vulkanContext->graphicsQueue;
     init_info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
     init_info.ImageCount = MAX_FRAMES_IN_FLIGHT;
-
-    // A legújabb 2026-os ImGui master ág beállításai
     init_info.PipelineInfoMain.RenderPass = renderer->getRenderPass();
     init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
-    // 5. PONTOSAN EGY inicializáló hívás:
     ImGui_ImplVulkan_Init(&init_info);
 }
 
-// --- ÚJ: Intelligens Modell Cserélő Logika ---
-// --- ÚJ: Intelligens Modell Cserélő Logika ---
+/**
+ * @brief Aszinkron módon, futásidőben cserél ki egy modellt a memóriában.
+ * Szigorúan megvárja, amíg a GPU befejezi a munkát, majd felszabadítja az előző objektum
+ * memóriáját, mielőtt beolvasná az újat, ezáltal megelőzve a memóriaszivárgást és a fagyást.
+ * * @param slot A modell helye a tárolóban (0 = High Poly, 1 = Low Poly).
+ * @param filepath A betöltendő új OBJ fájl elérési útja.
+ * @param nameTracker Csatolt string változó, amely frissíti a menüben kiírt fájlnevet.
+ */
 void RetopoApp::loadModelIntoSlot(int slot, const std::string& filepath, std::string& nameTracker) {
-    // 1. Megvárjuk, míg a videókártya befejezi a rajzolást
+
+    // 1. Biztonsági leállítás: Nem nyúlhatunk a memóriához, amíg a GPU rajzol!
     vkDeviceWaitIdle(vulkanContext->device);
 
-    // 2. Ha eddig volt ott modell, kiürítjük a GPU memóriát
+    // 2. Ha az adott slotban már volt modell, előbb töröljük a memóriáját
     if (loadedModels[slot].isLoaded) {
         vkDestroyBuffer(vulkanContext->device, loadedModels[slot].indexBuffer, nullptr);
         vkFreeMemory(vulkanContext->device, loadedModels[slot].indexBufferMemory, nullptr);
@@ -516,7 +544,7 @@ void RetopoApp::loadModelIntoSlot(int slot, const std::string& filepath, std::st
         loadedModels[slot].isLoaded = false;
     }
 
-    // 3. Betöltjük a teljesen újat a felszabadított helyre
+    // 3. Az új modell beolvasása a megtisztított helyre
     try {
         resourceManager->loadModel(filepath, loadedModels[slot].vertices, loadedModels[slot].indices);
         resourceManager->createVertexBuffer(loadedModels[slot].vertexBuffer, loadedModels[slot].vertexBufferMemory, loadedModels[slot].vertices);
@@ -524,7 +552,7 @@ void RetopoApp::loadModelIntoSlot(int slot, const std::string& filepath, std::st
 
         loadedModels[slot].isLoaded = true;
 
-        // Csak a fájlnevet tartjuk meg a kiíráshoz (levágjuk a mappákat előle)
+        // Fájlnév formázása (Levágjuk a mappákat az olvashatóság kedvéért)
         size_t pos = filepath.find_last_of("/\\");
         nameTracker = (pos != std::string::npos) ? filepath.substr(pos + 1) : filepath;
 

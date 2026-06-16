@@ -5,63 +5,104 @@
 #include <vector>
 #include <optional>
 
-// Ezek a struktúrák átköltöztek ide a RetopoApp.h-ból!
+/**
+ * @struct QueueFamilyIndices
+ * @brief A videókártyán található parancssorok (Queue Families) indexeit tárolja.
+ * A Vulkanban a GPU különböző részlegekre van osztva. Külön részleg felelhet a
+ * matematikai rajzolásért (Graphics) és a képernyőre küldésért (Present).
+ */
 struct QueueFamilyIndices {
-    //a kép kirajzolásahoz szükséges parancsok (pl. rajzolás, buffer másolás)
+    /** @brief A rajzolási (3D renderelés, másolás) parancsokat fogadó sor indexe. */
     std::optional<uint32_t> graphicsFamily;
-    //kép megjelenítése monitoron
+
+    /** @brief A monitorral való kommunikációt (kép megjelenítése) végző sor indexe. */
     std::optional<uint32_t> presentFamily;
+
+    /**
+     * @brief Ellenőrzi, hogy a GPU rendelkezik-e minden szükséges részleggel a program futtatásához.
+     * @return Igaz, ha mind a grafikus, mind a megjelenítési sor megtalálható.
+     */
     bool isComplete() {
         return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
-//azok az adatok amiket támogat a hardver
+
+/**
+ * @struct SwapChainSupportDetails
+ * @brief A videókártya képmegjelenítési (Swapchain) képességeit tároló struktúra.
+ */
 struct SwapChainSupportDetails {
-    //A képernyő/ablak korlátai (pl. min/max képszám, felbontás határai)
+    /** @brief A képernyő/ablak fizikai határai (pl. minimális és maximális felbontás, képek száma). */
     VkSurfaceCapabilitiesKHR capabilities;
-    //Támogatott pixelformátumok és színterek (pl. 8-bites RGB, HDR)
+
+    /** @brief A GPU által támogatott pixelformátumok és színterek (pl. 8-bites SRGB, HDR). */
     std::vector<VkSurfaceFormatKHR> formats;
-    //milyen modon kezelik ezeket ak képeket mikor jelenítik meg
+
+    /** @brief A támogatott képfrissítési stratégiák (VSync módok, pl. MAILBOX, FIFO). */
     std::vector<VkPresentModeKHR> presentModes;
 };
 
+/**
+ * @class VulkanContext
+ * @brief A Vulkan grafikus API alaprendszerét inicializáló és tároló magosztály.
+ * * Ez az osztály építi fel a kapcsolatot a szoftver és a fizikai videókártya között.
+ * Létrehozza az ablakfelületet, kiválasztja a GPU-t, beállítja a parancssorokat, és
+ * inicializálja a képernyőre rajzoláshoz szükséges Swapchain-t.
+ */
 class VulkanContext {
 public:
-    // A konstruktor elkéri az ablakot, hogy tudjon hozzá Felszínt (Surface) csinálni
+    /**
+     * @brief Konstruktor, amely a megadott ablakra felépíti a teljes Vulkan környezetet.
+     * @param window Mutató a GLFW által létrehozott operációs rendszeri ablakra.
+     */
     VulkanContext(GLFWwindow* window);
     ~VulkanContext();
 
-    // -- Publikus változók (A többi osztálynak szüksége lesz rájuk) --
-    //maga vulkan player
-    VkInstance instance;
-    //hibakezelő elérése
-    VkDebugUtilsMessengerEXT debugMessenger;
-    //A Vulkan-kompatibilis vászon, amit ráfeszítünk az ablakra
-    VkSurfaceKHR surface;
-    //ez maga a gpu
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    //A logikai vezérlőnk (ezen keresztül adunk ki minden parancsot a GPU-nak)
-    VkDevice device;
-    //ahova a 3D rajzolási parancsokat küldjük
-    VkQueue graphicsQueue;
-    //A sor, ahova a "Tedd ki a képernyőre!" parancsokat küldjük
-    VkQueue presentQueue;        
+    // ========================================================================
+    // PUBLIKUS VULKAN ERŐFORRÁSOK (A többi osztály ezekre hivatkozik)
+    // ========================================================================
 
-    //swapchain példány
+    /** @brief A Vulkan API példánya, a fő híd az alkalmazás és a Vulkan driver között. */
+    VkInstance instance;
+
+    /** @brief A validációs rétegek (hibakereső) üzenetküldő rendszere. */
+    VkDebugUtilsMessengerEXT debugMessenger;
+
+    /** @brief A platformfüggetlen felület (vászon), amely összeköti a Vulkant a GLFW ablakkal. */
+    VkSurfaceKHR surface;
+
+    /** @brief Maga a kiválasztott fizikai videókártya (Hardware). */
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
+    /** @brief A logikai eszköz (Software Controller), ezen keresztül küldjük a parancsokat a GPU-nak. */
+    VkDevice device;
+
+    /** @brief A csatorna (Queue), ahova a 3D rajzolási parancslistákat küldjük be. */
+    VkQueue graphicsQueue;
+
+    /** @brief A csatorna (Queue), ahova a "Tedd ki a képernyőre!" (Present) parancsok mennek. */
+    VkQueue presentQueue;
+
+    /** @brief A Swapchain (Képcserélő lánc) az egyenletes, képtörésmentes (VSync) megjelenítésért. */
     VkSwapchainKHR swapChain;
-    //a képek amik a swapchain csinál
+
+    /** @brief A Swapchain által lefoglalt és felügyelt nyers képek (Vásznak) listája. */
     std::vector<VkImage> swapChainImages;
-    //a swapchain képek beállításai
+
+    /** @brief A Swapchain képeinek kiválasztott pixelformátuma (pl. VK_FORMAT_B8G8R8A8_SRGB). */
     VkFormat swapChainImageFormat;
-    //swapchain kép mérete
+
+    /** @brief A Swapchain képeinek pontos felbontása (általában megegyezik az ablakmérettel). */
     VkExtent2D swapChainExtent;
-    //swapchan képeihez való lencse amin keresztül látjuk őket
+
+    /** @brief A képekre helyezett lencsék (Nézetek), amelyeken keresztül a shader olvasni/írni tud. */
     std::vector<VkImageView> swapChainImageViews;
 
 private:
-    GLFWwindow* window; // <--- Ide mentjük el az ablakot
+    /** @brief Hivatkozás a GLFW ablakra. */
+    GLFWwindow* window;
 
-    // -- Inicializáló függvények (Csak a konstruktor hívja őket) --
+    // --- Inicializáló függvények (A konstruktor futtatja őket sorrendben) ---
     void createInstance();
     void setupDebugMessenger();
     void createSurface();
@@ -70,7 +111,7 @@ private:
     void createSwapChain();
     void createImageViews();
 
-    // -- Segédfüggvények --
+    // --- Hardver ellenőrző és logikai segédfüggvények ---
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
     bool isDeviceSuitable(VkPhysicalDevice device);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

@@ -80,12 +80,12 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 ### 18. Interaktív Forgás- és Nézetvezérlő (Orbit & Pan Camera Controller)
 - **Gömbkoordinátás Navigáció:** A szoftver egy Blender-stílusú, professzionális kameravezérlést (Orbit Controller) valósít meg. A kamera pozícióját nem nyers X, Y, Z koordinátákkal számoljuk, hanem egy fix fókuszpont (`cameraTarget`) körüli szögekkel (Yaw - vízszintes forgás, Pitch - függőleges dőlés) és a távolsággal (`cameraRadius`).
 - **Felhasználói Interakciók (GLFW Callbacks):**
-    - **Orbit (Forgatás):** Az egér/trackpad mozgása közvetlenül a Yaw és Pitch szögeket módosítja, miközben a Pitch értéket +/- 89 fokra korlátozza (Satu), megakadályozva a kamera átfordulását.
-    - **Pan (Eltolás):** A Shift + egérmozgás hatására a kamera fókuszpontja eltolódik a kamera aktuális nézeti síkjának (Right és Up vektorok) megfelelően.
-    - **Zoom (Közelítés/Távolítás):** Az egérgörgő vagy trackpad gesztusok a sugár (`cameraRadius`) értékét módosítják biztonsági határok között.
+  - **Orbit (Forgatás):** Az egér/trackpad mozgása közvetlenül a Yaw és Pitch szögeket módosítja, miközben a Pitch értéket +/- 89 fokra korlátozza (Satu), megakadályozva a kamera átfordulását.
+  - **Pan (Eltolás):** A Shift + egérmozgás hatására a kamera fókuszpontja eltolódik a kamera aktuális nézeti síkjának (Right és Up vektorok) megfelelően.
+  - **Zoom (Közelítés/Távolítás):** Az egérgörgő vagy trackpad gesztusok a sugár (`cameraRadius`) értékét módosítják biztonsági határok között.
 
 ### 19. Grafikus Felhasználói Felület (Dear ImGui Integráció)
-- **Hardveresen Gyorsított UI:** A szoftver magában foglalja az ipari standard **Dear ImGui** könyvtár. Az ImGui felülete nem egy különálló ablak, hanem közvetlenül a Vulkan grafikus csővezetékébe (Pipeline) van integrálva.
+- **Hardveresen Gyorsított UI:** A szoftver magában foglalja az ipari standard **Dear ImGui** könyvtárat. Az ImGui felülete nem egy különálló ablak, hanem közvetlenül a Vulkan grafikus csővezetékébe (Pipeline) van integrálva.
 - **Különálló UI Pool:** Az ImGui saját, univerzális `VkDescriptorPool`-t igényel, mivel a háttérben dinamikusan hozza létre a betűtípusok textúráit és a gombok grafikai elemeit. A UI elemek kirajzolása a 3D modellek renderelése után, de még a RenderPass lezárása (`vkCmdEndRenderPass`) előtt történik, így a menük tökéletesen rásimulnak a 3D-s színtér tetejére.
 
 ### 20. Natív Fájlkezelő és Aszinkron Állapotvédelem (Native File Dialog - NFD)
@@ -95,10 +95,14 @@ A motor jelenleg a következő stabil, multiplatform (Windows / macOS) alapokkal
 ### 21. Slot-alapú VRAM Memóriakezelés és Dinamikus Mesh Csere
 - **Kétkomponensű Háló Kezelés:** A retopológiai szoftver logikájának megfelelően a motor induláskor lefoglal egy fix, 2 elemű struktúra-listát (`loadedModels.resize(2)`). A 0. slot a High Poly (referencia) modell, míg az 1. slot a Low Poly (szerkesztendő) modell helye.
 - **Memóriaszivárgás (Memory Leak) Elleni Védelem:** Amikor a felhasználó a fájlkezelőn keresztül új modellt tölt be egy már foglalt slotba, a motor egy rendkívül szigorú törlési protokollt hajt végre:
-    1. Kiadja a `vkDeviceWaitIdle` parancsot, megvárva, hogy a videókártya befejezze az éppen zajló rajzolási műveleteket.
-    2. Megsemmisíti a slotban lévő régi Vulkan objektumokat (`vkDestroyBuffer`).
-    3. Felszabadítja a kártyán lefoglalt fizikai memóriaterületeket (`vkFreeMemory`).
-    4. Kiüríti a CPU oldali vektorokat, és csak ezek után allokálja az új 3D modell erőforrásait. Ez a mechanizmus biztosítja, hogy a szoftver akár több órás használat és folyamatos modellcserék után sem fogyasztja el a számítógép memóriáját.
+  1. Kiadja a `vkDeviceWaitIdle` parancsot, megvárva, hogy a videókártya befejezze az éppen zajló rajzolási műveleteket.
+  2. Megsemmisíti a slotban lévő régi Vulkan objektumokat (`vkDestroyBuffer`).
+  3. Felszabadítja a kártyán lefoglalt fizikai memóriaterületeket (`vkFreeMemory`).
+  4. Kiüríti a CPU oldali vektorokat, és csak ezek után allokálja az új 3D modell erőforrásait. Ez a mechanizmus biztosítja, hogy a szoftver akár több órás használat és folyamatos modellcserék után sem fogyasztja el a számítógép memóriáját.
+
+### 22. Automatizált Egységtesztelés (Google Test)
+- **Minőségbiztosítás (QA):** A projekt a **Google Test (GTest)** keretrendszert használja a kritikus funkciók matematikai és logikai ellenőrzésére.
+- **Kriptográfiai és Határérték Tesztek:** A tesztkönyvtár (Test Suite) automatizáltan vizsgálja a `Vertex` ujjlenyomat-generátorának (Hash) ütközésmentességét, a kameramatematika határértékeit (Gimbal Lock védelem), valamint a Vulkan hibakezelő (Exception) rendszereit, garantálva a robusztus és ipari szintű stabilitást.
 
 ---
 
@@ -121,6 +125,7 @@ Vulkan_Retopo/
  ├── CMakeLists.txt      # Multiplatform build konfiguráció és függőségkezelés
  ├── README.md           # Architektúra és dokumentáció
  ├── main.cpp            # Belépési pont (App indítás)
+ ├── test_main.cpp       # GTest automatizált egységtesztek (Unit Tests)
  ├── modells/            # Referencia .obj és .mtl fájlok
  ├── shaders/            # Nyers GLSL shader forráskódok (vert/frag)
  └── src/

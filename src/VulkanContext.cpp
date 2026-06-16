@@ -7,11 +7,15 @@
 
 #include "VulkanUtils.h"
 
-//kommunikáció a vulkannal
+/**
+ * @brief Inicializálja a Vulkan alaprendszerét és felépíti a hardveres kapcsolatot.
+ * A konstruktor meghívásakor az összes kritikus Vulkan objektum (Instance, Device, Swapchain)
+ * automatikusan létrejön a megfelelő sorrendben.
+ * @param window Mutató a GLFW ablakra, amelyre a Vulkan rajzolni fog.
+ */
 VulkanContext::VulkanContext(GLFWwindow *window) {
     this->window = window;
-    
-    // Azonnal felépítjük a Vulkant, amint a Context létrejön!
+
     createInstance();
     setupDebugMessenger();
     createSurface();
@@ -23,7 +27,11 @@ VulkanContext::VulkanContext(GLFWwindow *window) {
 
 VulkanContext::~VulkanContext() {}
 
-//attól függően milyen modban idítjuk kell e hibakereső
+// ============================================================================
+// DEBUG ÉS VALIDÁCIÓS RÉTEGEK (Validation Layers)
+// ============================================================================
+
+// A validációs rétegek csak Debug módban aktívak (sebességoptimalizáció miatt Release-ben kikapcsolnak)
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -33,11 +41,14 @@ const bool enableValidationLayers = true;
 const std::vector<const char *> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
-//debug rendszer beállítása
+
+/**
+ * @brief Proxy függvény a Debug Messenger létrehozásához.
+ * Mivel ez egy kiterjesztés (Extension), a függvény mutatóját manuálisan kell lekérni a Vulkan-tól.
+ */
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
                                       const VkAllocationCallbacks *pAllocator,
                                       VkDebugUtilsMessengerEXT *pDebugMessenger) {
-    //csinálunk egy fügvényt ami lekér üres mutatókat ha sikerül akkor megtöltjük az üres memória címeket
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
         return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
@@ -45,7 +56,10 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 }
-//debug fleszabadító
+
+/**
+ * @brief Proxy függvény a Debug Messenger memóriájának felszabadításához.
+ */
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks *pAllocator) {
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -56,8 +70,11 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 const std::vector<const char *> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
-//ez az fg fog visszadni hogy jól fut e a kód
-//ez a bool a vulkán spéci változója multiplatform miatt kell
+
+/**
+ * @brief A Vulkan hivatalos hibaüzenet-kezelője (Callback).
+ * Ha a Vulkan helytelen memóriahasználatot vagy API hívást észlel, ez a függvény írja ki a konzolra.
+ */
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -67,7 +84,14 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
-//példányostás létrehozása
+// ============================================================================
+// ALAPRENDSZER (INSTANCE ÉS DEVICE) FELÉPÍTÉSE
+// ============================================================================
+
+/**
+ * @brief Létrehozza a Vulkan Instance-t (A program és a Vulkan API közötti fő kapcsolatot).
+ * Beállítja a szükséges kiterjesztéseket az ablakkezeléshez (GLFW) és a platform-specifikus (macOS) működéshez.
+ */
 void VulkanContext::createInstance() {
     if (enableValidationLayers) {
         std::cout << "Validation layerek bekapcsolva!" << std::endl;
@@ -85,12 +109,12 @@ void VulkanContext::createInstance() {
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
-    //ablakkkezelő megnézése oprendszer függően
+    // Lekérdezzük a GLFW-től, hogy milyen Vulkan kiterjesztések kellenek az ablak megrajzolásához
     uint32_t glfwExtensionCount = 0;
     const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-//molten vk beállítása
+// Mac kompatibilitás (Apple Silicon / MoltenVK) beállítása
 #ifdef __APPLE__
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
     extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
@@ -104,7 +128,7 @@ void VulkanContext::createInstance() {
     createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
 
-    //extra debugok hozzáadása
+    // Validációs rétegek (Hibakereső) beállítása
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
     if (enableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
@@ -113,7 +137,6 @@ void VulkanContext::createInstance() {
         populateDebugMessengerCreateInfo(debugCreateInfo);
         createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *) &debugCreateInfo;
     } else {
-        //megadjuk a réteget main fut
         createInfo.enabledLayerCount = 0;
         createInfo.pNext = nullptr;
     }
@@ -125,12 +148,13 @@ void VulkanContext::createInstance() {
     std::cout << "Vulkan Instance sikeresen letrehozva!" << std::endl;
 }
 
-//debug messenger elindítása
+/**
+ * @brief Beköti a memóriába a hibakereső funkciókat.
+ */
 void VulkanContext::setupDebugMessenger() {
     if (!enableValidationLayers) return;
-    //extrák
+
     VkDebugUtilsMessengerCreateInfoEXT createInfo;
-    //infok
     populateDebugMessengerCreateInfo(createInfo);
 
     if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
@@ -138,7 +162,9 @@ void VulkanContext::setupDebugMessenger() {
     }
 }
 
-//vulkán és az ablak közötti híd
+/**
+ * @brief Létrehoz egy felületet (Surface), amely összeköti a Vulkan-t az operációs rendszer ablakával.
+ */
 void VulkanContext::createSurface() {
     if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Window Surface-t!");
@@ -146,22 +172,20 @@ void VulkanContext::createSurface() {
     std::cout << "Window Surface sikeresen letrehozva!" << std::endl;
 }
 
-//fizikai eszköz megkeresése milyen gpu van a égpben
+/**
+ * @brief Megkeresi és kiválasztja a feladatra legalkalmasabb fizikai videókártyát a gépben.
+ */
 void VulkanContext::pickPhysicalDevice() {
-    //lehet több gpu is
     uint32_t deviceCount = 0;
-    //nullal inicializáljuk két lépcsős hitelesítés megnézzük a dbt
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
     if (deviceCount == 0) {
         throw std::runtime_error("Hiba: Nem talalhato Vulkan kompatibilis videokartya!");
     }
-    //létrehozzuk a db alapján vectort hogy jó mennyiségü memóriát foglaljunk le
+
     std::vector<VkPhysicalDevice> devices(deviceCount);
-    //ténylegesen inicializáljuk
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    //megkeressük a használható eszközt és azt töltjük be
     for (const auto &device: devices) {
         if (isDeviceSuitable(device)) {
             physicalDevice = device;
@@ -173,9 +197,12 @@ void VulkanContext::pickPhysicalDevice() {
         throw std::runtime_error("Hiba: Nem talalhato a feladatra alkalmas videokartya!");
     }
 }
-//gpu parancsok lekérése
+
+/**
+ * @brief Létrehozza a Logikai Eszközt (Logical Device), amely a kiválasztott GPU interfésze.
+ * Létrehozza a grafikus és megjelenítési parancsokat fogadó sorokat (Queues).
+ */
 void VulkanContext::createLogicalDevice() {
-    //megnézzük milyen parancs családok vnanak
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -190,7 +217,7 @@ void VulkanContext::createLogicalDevice() {
         queueCreateInfo.pQueuePriorities = &queuePriority;
         queueCreateInfos.push_back(queueCreateInfo);
     }
-    //az eszköz amiből kinyerjük a lehetőségeket
+
     VkPhysicalDeviceFeatures deviceFeatures{};
 
     VkDeviceCreateInfo createInfo{};
@@ -204,7 +231,7 @@ void VulkanContext::createLogicalDevice() {
 
     std::vector<const char *> actualDeviceExtensions = deviceExtensions;
 #ifdef __APPLE__
-    actualDeviceExtensions.push_back("VK_KHR_portability_subset");
+    actualDeviceExtensions.push_back("VK_KHR_portability_subset"); // Szükséges a Mac MoltenVK hídjához
 #endif
 
     createInfo.enabledExtensionCount = static_cast<uint32_t>(actualDeviceExtensions.size());
@@ -221,22 +248,26 @@ void VulkanContext::createLogicalDevice() {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a logikai eszközt!");
     }
 
+    // Elmentjük a GPU parancssorainak (Queues) memóriacímét későbbi használatra
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-//swapchain létrehozása hogy legyenek képek amiket előkészítünk ohgy ismább legyen a kép
+// ============================================================================
+// SWAPCHAIN ÉS KÉPKEZELÉS (Megjelenítési futószalag)
+// ============================================================================
+
+/**
+ * @brief Létrehozza a Swapchain-t (Képcserélő lánc), amely a monitoron megjelenő képeket (Vásznakat) kezeli.
+ * Megakadályozza a képtörést (Screen Tearing), és biztosítja a Double/Triple Buffering folyamatát.
+ */
 void VulkanContext::createSwapChain() {
-    //megnézzük miket támoat a gpu
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
-    //kiválasztja a ofrmátumot pl szín
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-    //képkezelési mod pl azonnal ahogy kész a kép ki rajzoljuk
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-    //a kép felbontását állítja be
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-    //képek mennyiségének bállítása hanyas renderelés legyne plu double or trippple
+    // Képek számának meghatározása (Minimális + 1 a simább működésért)
     uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
     if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
         imageCount = swapChainSupport.capabilities.maxImageCount;
@@ -250,20 +281,20 @@ void VulkanContext::createSwapChain() {
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Erre a képre fogunk rajzolni
 
-    //itt nézzük emg milyen őarancsaink vannak
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
+    // Ha a rajzolás és a képernyőre küldés más fizikai részlegen (Queue) van a GPU-n
     if (indices.graphicsFamily != indices.presentFamily) {
         createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         createInfo.queueFamilyIndexCount = 2;
         createInfo.pQueueFamilyIndices = queueFamilyIndices;
     } else {
-        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        createInfo.queueFamilyIndexCount = 0; 
-        createInfo.pQueueFamilyIndices = nullptr; 
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // Hatékonyabb módszer (általában ez fut)
+        createInfo.queueFamilyIndexCount = 0;
+        createInfo.pQueueFamilyIndices = nullptr;
     }
 
     createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
@@ -271,11 +302,12 @@ void VulkanContext::createSwapChain() {
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
-    //létrehozza a képek kezelési rendszerét
+
     if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Nem sikerult letrehozni a Swap Chain-t!");
     }
-    //átvett adatok kezelése
+
+    // A lefoglalt képek elkérése a Vulkantól
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
@@ -286,14 +318,24 @@ void VulkanContext::createSwapChain() {
     std::cout << "Swap Chain és " << imageCount << " db vaszon sikeresen letrehozva!" << std::endl;
 }
 
+/**
+ * @brief Képnézetek (Image Views) létrehozása a Swapchain nyers képeihez.
+ * A Vulkan a memóriában lévő nyers képeket csak egy "Nézeten" (lencsén) keresztül tudja használni rajzolásra.
+ */
 void VulkanContext::createImageViews() {
     swapChainImageViews.resize(swapChainImages.size());
     for (size_t i = 0; i < swapChainImages.size(); i++) {
-        // Használjuk a szerszámosládát!
         swapChainImageViews[i] = VulkanUtils::createImageView(device, swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 }
-//debug info fgje
+
+// ============================================================================
+// HARDVER ELLENŐRZŐ SEGÉDFÜGGVÉNYEK
+// ============================================================================
+
+/**
+ * @brief Kitölti a Debug Messenger konfigurációs struktúráját (milyen szintű hibákat írjon ki).
+ */
 void VulkanContext::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
     createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -305,13 +347,17 @@ void VulkanContext::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreate
     createInfo.pfnUserCallback = debugCallback;
 }
 
-//megnézi hogy az eszköz milyen adatokat képes fogadni
+/**
+ * @brief Ellenőrzi, hogy a talált GPU alkalmas-e a Vulkan motor futtatására.
+ * @return bool Igaz, ha támogatja a szükséges kiterjesztéseket, a Swapchain-t és van grafikus Queue-ja.
+ */
 bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
     QueueFamilyIndices indices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
     bool swapChainAdequate = false;
+
     if (extensionsSupported) {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
@@ -320,7 +366,9 @@ bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     return indices.isComplete() && extensionsSupported && swapChainAdequate;
 }
 
-//megnézi milyen kiterjesztések elérhetőek az ezsközön
+/**
+ * @brief Ellenőrzi az adott GPU-n elérhető kiterjesztéseket (Extensions).
+ */
 bool VulkanContext::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
@@ -335,10 +383,13 @@ bool VulkanContext::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     for (const auto &extension: availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
     }
-    return requiredExtensions.empty();
+    return requiredExtensions.empty(); // Igaz, ha minden szükségeset megtalált
 }
 
-//megkeresi a megfelelő parancs családokat hogy tudjuk milyen parancsokat használhatunk a gpu-n
+/**
+ * @brief Megkeresi, hogy a videókártyán melyik "család" (Queue) támogatja a grafikus számításokat
+ * és a képernyőre való rajzolást (Presentation).
+ */
 QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
     uint32_t queueFamilyCount = 0;
@@ -347,7 +398,6 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
     int i = 0;
-    //beállítja az eszközbe a megfleelő parancs családokat
     for (const auto &queueFamily: queueFamilies) {
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphicsFamily = i;
@@ -365,19 +415,20 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
     return indices;
 }
 
-//megadja a támogatott swapchan teknológiát
+/**
+ * @brief Lekérdezi, hogy a videókártya Swapchain-je milyen paramétereket támogat (képformátumok, vsync módok).
+ */
 SwapChainSupportDetails VulkanContext::querySwapChainSupport(VkPhysicalDevice device) {
     SwapChainSupportDetails details;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
 
-    //beállítja mennyi formátuma van
     uint32_t formatCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
     if (formatCount != 0) {
         details.formats.resize(formatCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
     }
-    //beállítja mennyi presentation módja vabn
+
     uint32_t presentModeCount;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
     if (presentModeCount != 0) {
@@ -387,7 +438,9 @@ SwapChainSupportDetails VulkanContext::querySwapChainSupport(VkPhysicalDevice de
     return details;
 }
 
-//megadja az ablak és a swapchain között híd tulajdonságait
+/**
+ * @brief Kiválasztja a legjobb színformátumot (lehetőleg SRGB-t) az elérhetőek közül.
+ */
 VkSurfaceFormatKHR VulkanContext::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
     for (const auto &availableFormat: availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace ==
@@ -398,17 +451,21 @@ VkSurfaceFormatKHR VulkanContext::chooseSwapSurfaceFormat(const std::vector<VkSu
     return availableFormats[0];
 }
 
-//kiválasztjuk hogyan dolgozza swap chain
+/**
+ * @brief Kiválasztja a képfrissítési stratégiát (VSync). A MAILBOX mód (Triple Buffering) a preferált.
+ */
 VkPresentModeKHR VulkanContext::chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes) {
     for (const auto &availablePresentMode: availablePresentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
             return availablePresentMode;
         }
     }
-    return VK_PRESENT_MODE_FIFO_KHR;
+    return VK_PRESENT_MODE_FIFO_KHR; // Szabvány VSync (garantáltan támogatott)
 }
 
-//kiválasztjuk milyenek legyenek a kép méretei a swapchainben
+/**
+ * @brief Meghatározza a Swapchain felbontását az aktuális ablak méretei alapján.
+ */
 VkExtent2D VulkanContext::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
@@ -421,6 +478,7 @@ VkExtent2D VulkanContext::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capab
             static_cast<uint32_t>(height)
         };
 
+        // Levágjuk (clamp) a méretet, ha az operációs rendszer ablakmérete túllépné a GPU fizikai korlátait
         actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width,
                                         capabilities.maxImageExtent.width);
         actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height,
