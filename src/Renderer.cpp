@@ -228,7 +228,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // BIZTONSÁGI ELLENŐRZÉS MAC GPU-KHOZ: Megnézzük, van-e egyáltalán betöltött modell
     bool hasLoadedModel = false;
     for (const auto& model : models) {
-        if (model.isLoaded) {
+        if (model.isLoaded && model.isVisible) {
             hasLoadedModel = true;
             break;
         }
@@ -241,7 +241,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
         // Végigmegyünk az összes betöltött modellen, és beküldjük őket a GPU-nak
         for (const auto& model : models) {
-            if (!model.isLoaded) continue;
+            if (!model.isLoaded || !model.isVisible) continue;
 
             VkBuffer vertexBuffers[] = {model.vertexBuffer};
             VkDeviceSize offsets[] = {0};

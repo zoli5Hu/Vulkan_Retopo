@@ -13,3 +13,6 @@ build/
 
 # ImGui settings
 imgui.ini
+
+# ai random mappája
+skills/

@@ -122,6 +122,19 @@ void RetopoApp::mainLoop() {
             openLowPolyDialog = true;
         }
 
+        // vertexek ki írása
+        ImGui::Text("vertexek száma modell 1: %s", std::to_string(loadedModels[0].vertices.size()).c_str());
+        ImGui::Text("vertexek száma modell 2: %s", std::to_string(loadedModels[1].vertices.size()).c_str());
+        ImGui::Text("összesen: %s", std::to_string(loadedModels[0].vertices.size() + loadedModels[1].vertices.size()).c_str());
+
+        //modell láthatóság
+        if (loadedModels[0].isLoaded) {
+            ImGui::Checkbox("Megjelenites modell 1##hp", &loadedModels[0].isVisible);
+        }        // és a Low Poly-hoz:
+        if (loadedModels[1].isLoaded) {
+            ImGui::Checkbox("Megjelenites modell 2##lp", &loadedModels[1].isVisible);
+        }
+
         ImGui::End();
 
         // --- 3. IMGUI ADATOK VÉGLEGESÍTÉSE ---
