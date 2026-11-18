@@ -110,6 +110,9 @@ private:
     std::string highPolyName = "Nincs betoltve";   ///< A UI-on megjelenített aktív High Poly fájlnév
     std::string lowPolyName = "Nincs betoltve";    ///< A UI-on megjelenített aktív Low Poly fájlnév
 
+    float sigmaMultiplier = 3.0f;                  ///< A hőtérkép szórás-szorzója (ImGui csúszkához)
+    float simpleDistanceTimeMs = 0.0f;             ///< A legutóbbi számítás futási ideje milliszekundumban
+
     /**
      * @brief Intelligens modell betöltő, amely aszinkron és memóriaszivárgás-mentes cserét biztosít.
      * @param slot 0 = High Poly, 1 = Low Poly hely.

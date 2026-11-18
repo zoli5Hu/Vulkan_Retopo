@@ -102,7 +102,10 @@ add_executable(Pro
         src/ResourceManager.h
         src/VulkanUtils.cpp
         src/VulkanUtils.h
-        ${IMGUI_SOURCES} # <--- ImGui forrásfájlok hozzáfűzve!
+        src/MeshAnalyzer.cpp
+        src/MeshAnalyzer.h
+        ${IMGUI_SOURCES}
+        # <--- ImGui forrásfájlok hozzáfűzve!
 )
 
 # Shaderek lefordítása az exe előtt
@@ -129,6 +132,7 @@ add_executable(VulkanTests
         src/Renderer.cpp
         src/ResourceManager.cpp
         src/VulkanUtils.cpp
+        src/MeshAnalyzer.cpp
         ${IMGUI_SOURCES}
 )
 

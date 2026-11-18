@@ -7,6 +7,7 @@
 #include <imgui_impl_vulkan.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "MeshAnalyzer.h"
 #include "nfd.hpp"
 #include "VulkanUtils.h"
 
@@ -134,6 +135,29 @@ void RetopoApp::mainLoop() {
         if (loadedModels[1].isLoaded) {
             ImGui::Checkbox("Megjelenites modell 2##lp", &loadedModels[1].isVisible);
         }
+        //colorized button
+        if (loadedModels[0].isLoaded && loadedModels[1].isLoaded) {
+            ImGui::Separator();
+            ImGui::SliderFloat("Sigma hatar", &sigmaMultiplier, 1.0f, 6.0f, "%.1f sigma");
+            if (ImGui::Button("Kiszinezi ak ülömbséget")) {
+                auto startTime = std::chrono::high_resolution_clock::now();
+                auto result = MeshAnalyzer::simpledistance(loadedModels[0].vertices, loadedModels[1].vertices, sigmaMultiplier);
+                auto endTime = std::chrono::high_resolution_clock::now();
+                simpleDistanceTimeMs = std::chrono::duration<float, std::chrono::milliseconds::period>(endTime - startTime).count();
+
+                if (result.empty()) {
+                    std::cout << "Hiba: Nem sikerult kiszinezni a Low Poly modellt, mert nincs High Poly modell betoltve!" << std::endl;
+                } else {
+                    std::cout << "Sikeres szinezés! (" << simpleDistanceTimeMs << " ms)" << std::endl;
+                    vkDeviceWaitIdle(vulkanContext->device);
+                    vkDestroyBuffer(vulkanContext->device, loadedModels[1].vertexBuffer, nullptr);
+                    vkFreeMemory(vulkanContext->device, loadedModels[1].vertexBufferMemory, nullptr);
+                    resourceManager->createVertexBuffer(loadedModels[1].vertexBuffer, loadedModels[1].vertexBufferMemory, loadedModels[1].vertices);
+                }
+            }
+            ImGui::Text("Futasi ido (Simple): %.2f ms", simpleDistanceTimeMs);
+        }
+
 
         ImGui::End();
 
