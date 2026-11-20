@@ -21,6 +21,7 @@ Pipeline::Pipeline(VkDevice device, const std::string& vertFilepath, const std::
  */
 Pipeline::~Pipeline() {
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyPipeline(device, wireframePipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
@@ -179,6 +180,11 @@ void Pipeline::createGraphicsPipeline(const std::string& vertFilepath, const std
     pipelineInfo.subpass = 0;
 
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Hiba: Graphics Pipeline letrehozasa sikertelen!");
+    }
+
+    rasterizer.polygonMode = VK_POLYGON_MODE_LINE; // Drótváz mód (Wireframe) teszteléshez
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &wireframePipeline) != VK_SUCCESS) {
         throw std::runtime_error("Hiba: Graphics Pipeline letrehozasa sikertelen!");
     }
 

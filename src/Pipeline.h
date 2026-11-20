@@ -41,6 +41,8 @@ public:
      */
     VkPipeline getPipeline() const { return graphicsPipeline; }
 
+    VkPipeline getWireframePipeline() const { return wireframePipeline; }
+
     /**
      * @brief Visszaadja a Pipeline elrendezését (Layout).
      * Szükséges a Descriptor Set-ek (Uniform Bufferek) shaderhez való csatlakoztatásakor.
@@ -54,6 +56,8 @@ private:
 
     /** @brief A Vulkan grafikus futószalag fő objektuma, amit a hardver használni fog. */
     VkPipeline graphicsPipeline;
+
+    VkPipeline wireframePipeline;  // wireframe pipeline for testing
 
     /** @brief A futószalag "csatlakozási felülete", ami megmondja a GPU-nak, milyen adatok (UBO) érkeznek. */
     VkPipelineLayout pipelineLayout;

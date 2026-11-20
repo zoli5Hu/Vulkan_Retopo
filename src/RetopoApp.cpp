@@ -131,9 +131,13 @@ void RetopoApp::mainLoop() {
         //modell láthatóság
         if (loadedModels[0].isLoaded) {
             ImGui::Checkbox("Megjelenites modell 1##hp", &loadedModels[0].isVisible);
-        }        // és a Low Poly-hoz:
+            ImGui::SameLine();
+            ImGui::Checkbox("Wireframe##hp", &loadedModels[0].isWireframe);
+        }
         if (loadedModels[1].isLoaded) {
             ImGui::Checkbox("Megjelenites modell 2##lp", &loadedModels[1].isVisible);
+            ImGui::SameLine();
+            ImGui::Checkbox("Wireframe##lp", &loadedModels[1].isWireframe);
         }
         //colorized button
         if (loadedModels[0].isLoaded && loadedModels[1].isLoaded) {

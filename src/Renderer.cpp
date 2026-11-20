@@ -243,6 +243,10 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         for (const auto& model : models) {
             if (!model.isLoaded || !model.isVisible) continue;
 
+            // Ha a modellnél be van pipálva a Wireframe, a drótvázas pipeline-t kötjük be, különben a kitöltöttet:
+            VkPipeline activePipeline = model.isWireframe ? pipeline->getWireframePipeline() : pipeline->getPipeline();
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
+
             VkBuffer vertexBuffers[] = {model.vertexBuffer};
             VkDeviceSize offsets[] = {0};
 

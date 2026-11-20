@@ -20,6 +20,7 @@ struct ModelData {
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;  /**< Az Index Buffer mögötti dedikált fizikai VRAM terület. */
     bool isLoaded = false;                         /**< Igaz, ha a modell hibamentesen betöltődött a videókártyára. */
     bool isVisible = true;                         /**< Igaz, ha a modell látható a jelenetben. */
+    bool isWireframe = false;
 };
 
 

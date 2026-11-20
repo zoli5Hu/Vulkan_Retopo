@@ -23,7 +23,7 @@ struct Vertex {
      * Ez elengedhetetlen a Hash-map alapú duplikáció-szűréshez az OBJ betöltéskor.
      */
     bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color;
+        return pos == other.pos;
     }
 
     /**
@@ -74,7 +74,7 @@ namespace std {
     template<> struct hash<Vertex> {
         size_t operator()(Vertex const& vertex) const {
             // A pozíció és a szín vektorainak hash-értékeit kombináljuk össze egyetlen egyedi azonosítóvá
-            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1);
+            return ((hash<glm::vec3>()(vertex.pos)));
         }
     };
 }
