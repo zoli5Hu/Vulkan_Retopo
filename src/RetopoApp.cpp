@@ -141,11 +141,19 @@ void RetopoApp::mainLoop() {
         }
         //colorized button
         if (loadedModels[0].isLoaded && loadedModels[1].isLoaded) {
+            auto updateLowPolyBuffer = [&]() {
+                vkDeviceWaitIdle(vulkanContext->device);
+                vkDestroyBuffer(vulkanContext->device, loadedModels[1].vertexBuffer, nullptr);
+                vkFreeMemory(vulkanContext->device, loadedModels[1].vertexBufferMemory, nullptr);
+                resourceManager->createVertexBuffer(loadedModels[1].vertexBuffer, loadedModels[1].vertexBufferMemory, loadedModels[1].vertices);
+            };
+
             ImGui::Separator();
             ImGui::SliderFloat("Sigma hatar", &sigmaMultiplier, 1.0f, 6.0f, "%.1f sigma");
+            static auto result = std::unordered_map<Vertex, std::unordered_map<Vertex, float>>();
             if (ImGui::Button("Kiszinezi ak ülömbséget")) {
                 auto startTime = std::chrono::high_resolution_clock::now();
-                auto result = MeshAnalyzer::simpledistance(loadedModels[0].vertices, loadedModels[1].vertices, sigmaMultiplier);
+                result = MeshAnalyzer::simpledistance(loadedModels[0].vertices, loadedModels[1].vertices, sigmaMultiplier);
                 auto endTime = std::chrono::high_resolution_clock::now();
                 simpleDistanceTimeMs = std::chrono::duration<float, std::chrono::milliseconds::period>(endTime - startTime).count();
 
@@ -153,14 +161,42 @@ void RetopoApp::mainLoop() {
                     std::cout << "Hiba: Nem sikerult kiszinezni a Low Poly modellt, mert nincs High Poly modell betoltve!" << std::endl;
                 } else {
                     std::cout << "Sikeres szinezés! (" << simpleDistanceTimeMs << " ms)" << std::endl;
-                    vkDeviceWaitIdle(vulkanContext->device);
-                    vkDestroyBuffer(vulkanContext->device, loadedModels[1].vertexBuffer, nullptr);
-                    vkFreeMemory(vulkanContext->device, loadedModels[1].vertexBufferMemory, nullptr);
-                    resourceManager->createVertexBuffer(loadedModels[1].vertexBuffer, loadedModels[1].vertexBufferMemory, loadedModels[1].vertices);
+                    updateLowPolyBuffer();
                 }
             }
             ImGui::Text("Futasi ido (Simple): %.2f ms", simpleDistanceTimeMs);
-        }
+
+            ImGui::Separator();
+            if (ImGui::Button("Shrinkwrap")) {
+                if (result.empty()) {
+                    result = MeshAnalyzer::simpledistance(loadedModels[0].vertices, loadedModels[1].vertices, sigmaMultiplier, false);
+                }
+                MeshAnalyzer::shrinkwrap(result, loadedModels[1].vertices);
+                result.clear();
+                updateLowPolyBuffer();
+            }
+
+            ImGui::Separator();
+            static float relaxFactor = 0.5f;
+            static int iterations = 3;
+            ImGui::SliderFloat("Relax erosseg", &relaxFactor, 0.1f, 1.0f, "%.2f");
+            if (ImGui::Button("Relax (Simitas)")) {
+                MeshAnalyzer::relax(loadedModels[1].vertices, loadedModels[1].indices, relaxFactor);
+                result.clear();
+                updateLowPolyBuffer();
+            }
+
+            ImGui::SliderInt("Iteraciok", &iterations, 1, 10);
+            if (ImGui::Button("Optimalizalas (Relax + Shrinkwrap)")) {
+                for (int i = 0; i < iterations; ++i) {
+                    MeshAnalyzer::relax(loadedModels[1].vertices, loadedModels[1].indices, relaxFactor);
+                    auto dist = MeshAnalyzer::simpledistance(loadedModels[0].vertices, loadedModels[1].vertices, sigmaMultiplier, false);
+                    MeshAnalyzer::shrinkwrap(dist, loadedModels[1].vertices);
+                }
+                result.clear();
+                updateLowPolyBuffer();
+            }
+        };
 
 
         ImGui::End();
